@@ -362,7 +362,12 @@ body {
 }
 
 /* Modal / details — both the .modal* variants (declared in index.html)
-   AND the .details-* variants (generated dynamically by app.js openUrlDetails). */
+   AND the .details-* variants (generated dynamically by app.js openUrlDetails).
+   IMPORTANT: do NOT set display: flex !important here — the inline
+   `style="display: none"` on the hidden modals (#settingsModal, #dashboardModal)
+   must keep them hidden until their JS toggles display. The legacy
+   .modal rule in styles.css already provides `display: flex` for the shown
+   state via inline style removal. */
 .modal,
 .details-modal-overlay {
     position: fixed !important;
@@ -370,7 +375,7 @@ body {
     background: rgba(0, 0, 0, 0.75) !important;
     backdrop-filter: blur(6px) !important;
     -webkit-backdrop-filter: blur(6px) !important;
-    display: flex !important;
+    /* display intentionally left to the inline style + legacy .modal rule */
     align-items: center !important;
     justify-content: center !important;
     z-index: 1000 !important;
