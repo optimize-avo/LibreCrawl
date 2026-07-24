@@ -53,7 +53,7 @@ body {
 }
 .btn-success {
     background: var(--success) !important;
-    color: #052b1a !important;
+    color: var(--success-fg) !important;
     border-color: var(--success) !important;
 }
 .btn-danger {

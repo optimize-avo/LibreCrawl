@@ -54,4 +54,9 @@
   --error-bg:           rgba(239, 68, 68, 0.10);
   --success-bg:         rgba(34, 192, 122, 0.10);
   --warning-bg:         rgba(245, 158, 11, 0.10);
+
+  /* Popover surface — used for dropdowns, modals, toasts */
+  --popover: #161616;
+  /* Success-on-success text color — DARK on success green (a11y) */
+  --success-fg: #052b1a;
 }
