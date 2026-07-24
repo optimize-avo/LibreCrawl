@@ -3,165 +3,117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - LibreCrawl</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Sign in — LibreCrawl</title>
+    <link rel="stylesheet" href="/static/css/tw.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            color: var(--ink);
         }
-
         .login-container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            background: var(--bg-glass);
+            backdrop-filter: var(--blur-glass);
+            -webkit-backdrop-filter: var(--blur-glass);
+            border: 1px solid var(--border-hairline);
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             width: 100%;
             max-width: 420px;
-            padding: 48px 40px;
+            padding: 40px 32px;
         }
-
-        .logo {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-
-        .logo h1 {
-            font-size: 32px;
-            font-weight: 700;
-            color: #667eea;
-            margin-bottom: 8px;
-        }
-
-        .logo p {
-            color: #6b7280;
-            font-size: 14px;
-        }
-
-        .form-group {
-            margin-bottom: 24px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #374151;
-            font-weight: 500;
-            font-size: 14px;
-        }
-
+        .logo { text-align: center; margin-bottom: 28px; }
+        .logo h1 { font-size: 22px; font-weight: 600; color: var(--ink); margin-bottom: 4px; letter-spacing: -0.01em; }
+        .logo p { color: var(--fg-muted); font-size: 13px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; color: var(--fg-muted); font-weight: 500; font-size: 12px; }
         input[type="text"],
         input[type="password"] {
             width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 10px 14px;
+            background: var(--card);
+            border: 1px solid var(--border-functional);
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--ink);
             font-family: 'Inter', sans-serif;
-            transition: all 0.2s;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-
         input[type="text"]:focus,
         input[type="password"]:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px var(--primary);
         }
-
         .btn {
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            padding: 10px 14px;
+            background: var(--primary);
+            color: var(--primary-fg);
             border: none;
-            border-radius: 8px;
-            font-size: 16px;
+            border-radius: 6px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: background 0.15s;
             font-family: 'Inter', sans-serif;
         }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn:active {
-            transform: translateY(0);
-        }
-
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
+        .btn:hover { background: var(--primary-hover); }
+        .btn:active { background: var(--primary-active); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-guest {
-            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            background: var(--panel-2);
+            color: var(--ink);
             margin-top: 12px;
+            border: 1px solid var(--border-hairline);
         }
-
-        .btn-guest:hover {
-            box-shadow: 0 8px 16px rgba(107, 114, 128, 0.3);
-        }
-
-        .divider {
-            text-align: center;
-            margin: 24px 0;
-            color: #9ca3af;
-            font-size: 14px;
-        }
-
+        .btn-guest:hover { background: var(--muted); }
         .register-link {
             text-align: center;
-            margin-top: 24px;
-            color: #6b7280;
-            font-size: 14px;
+            margin-top: 20px;
+            color: var(--fg-muted);
+            font-size: 13px;
         }
-
         .register-link a {
-            color: #667eea;
+            color: var(--primary);
             text-decoration: none;
-            font-weight: 600;
+            font-weight: 500;
         }
-
-        .register-link a:hover {
-            text-decoration: underline;
-        }
-
+        .register-link a:hover { text-decoration: underline; }
         .alert {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-            font-size: 14px;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 13px;
             display: none;
+            border: 1px solid;
         }
-
         .alert-error {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #dc2626;
+            background: var(--error-bg);
+            border-color: var(--error-border);
+            color: var(--error);
         }
-
         .alert-success {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            color: #16a34a;
+            background: var(--success-bg);
+            border-color: var(--success-border);
+            color: var(--success);
         }
-
-        .alert.show {
-            display: block;
+        .alert.show { display: block; }
+        .skip-auth-warning {
+            background: var(--warning-bg);
+            border: 1px solid var(--warning-border);
+            color: var(--warning);
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            text-align: left;
         }
     </style>
 </head>
@@ -169,13 +121,13 @@
     <div class="login-container">
         <div class="logo">
             <h1>LibreCrawl</h1>
-            <p>SEO Spider Tool</p>
+            <p>Sign in to start crawling</p>
         </div>
 
         <div id="alert" class="alert"></div>
 
         {% if skip_auth %}
-        <div class="alert alert-error show" style="text-align: left;">
+        <div class="skip-auth-warning">
             <strong>⚠️ Authentication is disabled.</strong>
             Anyone can log in as any username with no password.
             The username is only used to separate sessions.
@@ -264,7 +216,6 @@
             }
         });
 
-        // Guest login
         const guestBtn = document.getElementById('guestBtn');
         if (guestBtn) guestBtn.addEventListener('click', async () => {
             hideAlert();
@@ -298,7 +249,6 @@
             }
         });
 
-        // Check if registration is disabled
         const registrationDisabled = {{ 'true' if registration_disabled else 'false' }};
         const registerLink = document.getElementById('registerLink');
 
