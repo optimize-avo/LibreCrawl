@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./components.css";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-rail: var(--bg-rail);
+  --color-card: var(--card);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-muted: var(--muted);
+  --color-border-hairline: var(--border-hairline);
+  --color-border-functional: var(--border-functional);
+  --color-border-line: var(--border-line);
+  --color-ink: var(--ink);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+  --color-primary-fg: var(--primary-fg);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-destructive: var(--destructive);
+
+  --font-sans: var(--font-sans);
+}

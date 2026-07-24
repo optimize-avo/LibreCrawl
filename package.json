@@ -1,0 +1,13 @@
+{
+  "name": "librecrawl",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build:css": "tailwindcss -i ./web/static/css/tw-input.css -o ./web/static/css/tw.css --minify",
+    "watch:css": "tailwindcss -i ./web/static/css/tw-input.css -o ./web/static/css/tw.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.1.0",
+    "@tailwindcss/cli": "^4.1.0"
+  }
+}
