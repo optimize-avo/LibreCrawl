@@ -616,15 +616,25 @@ function updateCrawlButtons() {
 }
 
 function showProgress() {
-    document.getElementById('progressContainer').style.display = 'flex';
+    const container = document.getElementById('progressContainer');
+    const fill = document.getElementById('progressFill');
+    container.style.display = 'flex';
+    fill.classList.add('active'); // pulse animation while running
 }
 
 function hideProgress() {
-    document.getElementById('progressContainer').style.display = 'none';
+    const container = document.getElementById('progressContainer');
+    const fill = document.getElementById('progressFill');
+    container.style.display = 'none';
+    fill.classList.remove('active');
 }
 
 function updateProgress(percentage) {
-    document.getElementById('progressFill').style.width = percentage + '%';
+    const fill = document.getElementById('progressFill');
+    fill.style.width = percentage + '%';
+    // Keep .active class on while a crawl is in progress so the pulse animation runs.
+    // showProgress() sets it on, this keeps it on, hideProgress() removes it.
+    if (!fill.classList.contains('active')) fill.classList.add('active');
 }
 
 function updateStatus(message) {
@@ -1045,13 +1055,16 @@ function addRowToTable(tableBodyId, rowData) {
 }
 
 // Tab Management
-function switchTab(tabName) {
+function switchTab(tabName, btn) {
     // Remove active class from all tabs and panes
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
 
-    // Add active class to selected tab and pane
-    event.target.classList.add('active');
+    // Add active class to selected tab and pane.
+    // Accept the clicked button explicitly (passed via `this` from inline onclick)
+    // because `window.event` is undefined outside the dispatch chain.
+    const tabBtn = btn || (typeof event !== 'undefined' && event && event.target) || document.querySelector(`.tab-btn[onclick*="switchTab('${tabName}')"]`);
+    if (tabBtn) tabBtn.classList.add('active');
     document.getElementById(tabName + '-tab').classList.add('active');
 
     // Load pending links data if switching to Links tab
@@ -1162,11 +1175,14 @@ function filterIssues(filterType) {
 }
 
 // Filter Management
-function toggleFilter(filterType) {
+function toggleFilter(filterType, btn) {
     const filterItems = document.querySelectorAll('.filter-item');
     filterItems.forEach(item => item.classList.remove('active'));
 
-    event.currentTarget.classList.add('active');
+    // Accept clicked button explicitly (passed via `this` from inline onclick)
+    // because `window.event` is undefined outside the dispatch chain.
+    const clicked = btn || (typeof event !== 'undefined' && event && (event.currentTarget || event.target));
+    if (clicked) clicked.classList.add('active');
     crawlState.filters.active = filterType;
 
     // Apply filter to tables
@@ -2360,4 +2376,198 @@ function renderIssueRow(row, issue, index) {
         <td>${issue.issue}</td>
         <td style="word-break: break-word;" title="${issue.details}">${issue.details}</td>
     `;
+}
+// =====================================================================
+// Sortable tables — click a <th data-sort="key"> to sort that tab ASC/DESC.
+// sortTable(tab, key) sorts the virtual scroller's current dataset by
+// the named field and re-renders. Repeat clicks flip direction.
+// =====================================================================
+
+// Per-tab sort state: { tab: { key: string|null, dir: 'asc'|'desc' } }
+const tableSortState = {};
+
+// Map of <th data-sort> keys to fields on the underlying data objects.
+// Falls back to .url / .title / .status etc. — same keys the existing
+// table renderers already use, so sort matches what the user sees.
+const SORT_FIELD_MAP = {
+    // Generic URL-table columns
+    address:    u => (u.url || '').toLowerCase(),
+    status:     u => parseInt(u.status_code || u.status || 0, 10) || 0,
+    'content-type': u => (u.content_type || '').toLowerCase(),
+    size:       u => parseInt(u.size || 0, 10) || 0,
+    title:      u => (u.title || '').toLowerCase(),
+    'meta-desc': u => (u.meta_description || '').toLowerCase(),
+    h1:         u => (u.h1 || '').toLowerCase(),
+    words:      u => parseInt(u.word_count || u.words || 0, 10) || 0,
+    response:   u => parseInt(u.response_time || 0, 10) || 0,
+    analytics:  u => (u.analytics ? 1 : 0),
+    'og-tags':  u => Object.keys(u.og_tags || {}).length,
+    'json-ld':  u => Object.keys(u.json_ld || u.jsonld || {}).length,
+    links:      u => (u.internal_links || 0) + (u.external_links || 0),
+    images:     u => parseInt(u.images_count || u.images || 0, 10) || 0,
+    js:         u => parseInt(u.js_count || u.js || 0, 10) || 0,
+    // Issues table
+    type:       i => (i.type || '').toLowerCase(),
+    category:   i => (i.category || '').toLowerCase(),
+    issue:      i => (i.issue || '').toLowerCase(),
+    url:        i => (i.url || '').toLowerCase(),
+    details:    i => (i.details || '').toLowerCase(),
+    // Status codes (uses {code, count})
+    code:       s => parseInt(s.code || s.status || 0, 10) || 0,
+    count:      s => parseInt(s.count || 0, 10) || 0
+};
+
+function sortTable(tab, key) {
+    const scroller = virtualScrollers[tab];
+    if (!scroller) return;
+
+    const data = scroller.data || [];
+    const fieldFn = SORT_FIELD_MAP[key];
+    if (!fieldFn) return; // unknown key — ignore
+
+    // Flip direction if already sorting by this key
+    const prev = tableSortState[tab] || { key: null, dir: 'asc' };
+    let dir = 'asc';
+    if (prev.key === key && prev.dir === 'asc') dir = 'desc';
+    tableSortState[tab] = { key, dir };
+
+    // Compare: try numeric first, then string
+    const sorted = [...data].sort((a, b) => {
+        const va = fieldFn(a);
+        const vb = fieldFn(b);
+        let cmp;
+        if (typeof va === 'number' && typeof vb === 'number') {
+            cmp = va - vb;
+        } else {
+            cmp = String(va).localeCompare(String(vb));
+        }
+        return dir === 'asc' ? cmp : -cmp;
+    });
+
+    scroller.setData(sorted);
+
+    // Update header indicator (▲ asc / ▼ desc / none)
+    const table = document.getElementById(tab + 'Table') || document.getElementById(tab + '-table');
+    if (table) {
+        table.querySelectorAll('th[data-sort]').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (th.dataset.sort === key) {
+                th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        });
+    }
+}
+
+// =====================================================================
+// Sortable tables — status-codes + issues variants.
+// Both render through their own updateXxxTable functions (not virtual
+// scrollers), so they need dedicated sort handlers.
+// =====================================================================
+
+const statusCodesSortState = { key: null, dir: 'asc' };
+const issuesSortState = { key: null, dir: 'asc' };
+
+// Status codes table: sort then re-render via updateStatusCodesTable
+function sortStatusCodesTable(key) {
+    let dir = 'asc';
+    if (statusCodesSortState.key === key && statusCodesSortState.dir === 'asc') dir = 'desc';
+    statusCodesSortState.key = key;
+    statusCodesSortState.dir = dir;
+
+    const get = k => (crawlState.statusCodes || []).slice().sort((a, b) => {
+        let va, vb;
+        if (k === 'code')        { va = parseInt(a.code || 0, 10); vb = parseInt(b.code || 0, 10); }
+        else if (k === 'count')  { va = parseInt(a.count || 0, 10); vb = parseInt(b.count || 0, 10); }
+        else                     { va = String(a.status || a.label || '').toLowerCase(); vb = String(b.status || b.label || '').toLowerCase(); cmp_outer: { const cmp = va.localeCompare(vb); return dir === 'asc' ? cmp : -cmp; } }
+        const cmp = va - vb;
+        return dir === 'asc' ? cmp : -cmp;
+    });
+
+    // For status-codes, the existing updateStatusCodesTable ignores input order
+    // (it builds counts from crawlState.urls), so we sort the table body directly
+    // after rendering.
+    if (typeof updateStatusCodesTable === 'function') {
+        updateStatusCodesTable();
+    }
+    const tbody = document.getElementById('statusCodesTableBody');
+    if (tbody) {
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const sorted = rows.slice().sort((a, b) => {
+            const av = a.cells[key === 'code' ? 0 : key === 'status' ? 1 : 2]?.textContent || '';
+            const bv = b.cells[key === 'code' ? 0 : key === 'status' ? 1 : 2]?.textContent || '';
+            const cmp = (key === 'code' || key === 'count')
+                ? parseInt(av, 10) - parseInt(bv, 10)
+                : av.toLowerCase().localeCompare(bv.toLowerCase());
+            return dir === 'asc' ? cmp : -cmp;
+        });
+        sorted.forEach(r => tbody.appendChild(r));
+    }
+
+    // Indicator
+    const ths = document.querySelectorAll('#statusCodesTable th[data-sort]');
+    ths.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === key) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+}
+
+// Issues table: same approach — sort <tr>s in the DOM
+function sortIssuesTable(key) {
+    let dir = 'asc';
+    if (issuesSortState.key === key && issuesSortState.dir === 'asc') dir = 'desc';
+    issuesSortState.key = key;
+    issuesSortState.dir = dir;
+
+    const tbody = document.getElementById('issuesTableBody') || document.querySelector('#issues-tab tbody');
+    if (!tbody) return;
+    const colIdx = { url: 0, type: 1, category: 2, issue: 3, details: 4 }[key];
+    if (colIdx === undefined) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const sorted = rows.slice().sort((a, b) => {
+        const av = a.cells[colIdx]?.textContent || '';
+        const bv = b.cells[colIdx]?.textContent || '';
+        const cmp = av.toLowerCase().localeCompare(bv.toLowerCase());
+        return dir === 'asc' ? cmp : -cmp;
+    });
+    sorted.forEach(r => tbody.appendChild(r));
+
+    const ths = document.querySelectorAll('#issuesTable th[data-sort]');
+    ths.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === key) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+}
+
+// Links tables (internalLinks, externalLinks) — sort <tr>s in the DOM.
+const linksSortState = {};
+function sortLinksTable(tabId, key) {
+    let dir = 'asc';
+    const stateKey = tabId;
+    const prev = linksSortState[stateKey] || { key: null, dir: 'asc' };
+    if (prev.key === key && prev.dir === 'asc') dir = 'desc';
+    linksSortState[stateKey] = { key, dir };
+
+    const tbody = document.getElementById(tabId + 'TableBody');
+    if (!tbody) return;
+    const colIdx = { url: 0, target: 1, status: 2, anchor: 3, domain: 3, placement: 4 }[key];
+    if (colIdx === undefined) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const sorted = rows.slice().sort((a, b) => {
+        const av = a.cells[colIdx]?.textContent || '';
+        const bv = b.cells[colIdx]?.textContent || '';
+        // Status is numeric; rest is string
+        const cmp = (key === 'status')
+            ? (parseInt(av, 10) || 0) - (parseInt(bv, 10) || 0)
+            : av.toLowerCase().localeCompare(bv.toLowerCase());
+        return dir === 'asc' ? cmp : -cmp;
+    });
+    sorted.forEach(r => tbody.appendChild(r));
+
+    const ths = document.querySelectorAll(`#${tabId}Table th[data-sort]`);
+    ths.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === key) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
 }

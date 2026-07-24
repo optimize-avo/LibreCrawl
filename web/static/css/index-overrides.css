@@ -265,18 +265,36 @@ body {
 .tab-content { background: transparent !important; color: var(--ink) !important; }
 .tab-pane { background: transparent !important; color: var(--ink) !important; }
 
-/* Tables */
+/* Tables — #1 kill thead/body gap, #2 fix scroll-row-hiding, #5 widen columns */
 .table-container {
     background: transparent !important;
     color: var(--ink) !important;
+    /* The container itself is the scroll viewport. */
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    /* Cap height so the table scrolls inside instead of pushing the page. */
+    max-height: calc(100vh - 240px) !important;
+    /* Show a thin scrollbar instead of letting it vanish. */
+    scrollbar-gutter: stable !important;
 }
 .data-table {
+    /* min-width forces horizontal scrollbar when cols exceed viewport — fixes
+       truncated cells. column-resize.js still controls per-col resize on top. */
     width: 100% !important;
+    min-width: 1100px !important;
     border-collapse: separate !important;
+    border-collapse: collapse !important; /* collapse kills the phantom row gap */
     border-spacing: 0 !important;
     background: var(--card) !important;
     color: var(--ink) !important;
     font-size: 13px !important;
+    table-layout: auto !important;
+}
+.data-table thead {
+    /* Sticky to the container's top so headers stay visible while scrolling. */
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 5 !important;
 }
 .data-table th {
     background: var(--panel) !important;
@@ -288,17 +306,51 @@ body {
     border-bottom: 1px solid var(--border-hairline) !important;
     text-transform: none !important;
     letter-spacing: 0 !important;
+    white-space: nowrap !important;
+    /* Allow horizontal resize via legacy column-resize.js without breaking
+       min-width; th column-resize.js sets style.minWidth per column. */
+    position: relative !important;
+    /* #7 sortable: cursor + hover bg */
+    cursor: pointer !important;
+    user-select: none !important;
 }
+.data-table th:hover { background: var(--muted) !important; color: var(--ink) !important; }
+.data-table th.sort-asc::after { content: ' ▲'; color: var(--primary) !important; font-size: 10px; }
+.data-table th.sort-desc::after { content: ' ▼'; color: var(--primary) !important; font-size: 10px; }
 .data-table td {
     background: var(--card) !important;
     color: var(--ink) !important;
     padding: 10px 14px !important;
     border-bottom: 1px solid var(--border-line) !important;
     font-size: 13px !important;
+    /* Don't truncate URL/JSON cells by default — let the table's horizontal
+       scrollbar handle overflow. Long text wraps inside the cell instead. */
+    overflow-wrap: anywhere !important;
+    vertical-align: top !important;
 }
 .data-table tbody tr:hover td { background: var(--muted) !important; }
 .data-table tbody tr:nth-child(even) td { background: var(--card) !important; }
-.data-table tbody tr.selected td { border-left: 2px solid var(--primary) !important; }
+.data-table tbody tr.selected td {
+    border-left: 2px solid var(--primary) !important;
+    background: var(--surface-active) !important;
+}
+/* Address column specifically — show full URL, allow wrap. */
+.data-table td:first-child,
+.data-table th:first-child {
+    min-width: 200px !important;
+    max-width: 480px !important;
+}
+/* Other columns get a sane minimum so they don't collapse below readability */
+.data-table th:not(:first-child):not(:last-child) { min-width: 90px !important; }
+.data-table td:not(:first-child):not(:last-child) { min-width: 90px !important; }
+/* Last column (Details/Actions) keeps narrow width */
+.data-table th:last-child { min-width: 80px !important; width: 80px !important; }
+.data-table td:last-child { min-width: 80px !important; width: 80px !important; white-space: nowrap !important; }
+
+/* Column resize grip — make it visible only on header hover, otherwise hide
+   so it doesn't create visual noise. */
+.column-resize-grip { background: transparent !important; }
+.data-table th:hover .column-resize-grip { background: var(--primary) !important; opacity: 0.4 !important; }
 
 /* Status bar */
 .status-bar {
@@ -309,41 +361,129 @@ body {
     font-size: 12px !important;
 }
 
-/* Modal / details */
-.modal {
-    background: rgba(0, 0, 0, 0.7) !important;
+/* Modal / details — both the .modal* variants (declared in index.html)
+   AND the .details-* variants (generated dynamically by app.js openUrlDetails). */
+.modal,
+.details-modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0, 0, 0, 0.75) !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 1000 !important;
+    padding: 24px !important;
 }
-.modal-content {
+.modal-content,
+.details-modal {
     background: var(--bg-rail) !important;
     color: var(--ink) !important;
     border: 1px solid var(--border-hairline) !important;
     border-radius: 12px !important;
+    width: 100% !important;
+    max-width: 800px !important;
+    max-height: calc(100vh - 80px) !important;
+    overflow: auto !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6) !important;
+    font-family: var(--font-sans) !important;
 }
-.modal-header {
-    border-bottom: 1px solid var(--border-hairline) !important;
+.modal-header,
+.details-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
     padding: 16px 20px !important;
+    border-bottom: 1px solid var(--border-hairline) !important;
+    background: var(--bg-rail) !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1 !important;
 }
-.modal-header h2 {
+.modal-header h2,
+.details-header h3 {
     color: var(--ink) !important;
     font-size: 16px !important;
     font-weight: 600 !important;
+    margin: 0 !important;
+    letter-spacing: -0.01em !important;
 }
-.modal-close {
+.modal-close,
+.close-btn {
     color: var(--fg-muted) !important;
     background: transparent !important;
     border: none !important;
-    font-size: 18px !important;
+    font-size: 22px !important;
+    line-height: 1 !important;
     cursor: pointer !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+    transition: color 0.1s, background 0.1s !important;
 }
-.modal-close:hover { color: var(--ink) !important; }
-.modal-body {
-    padding: 16px 20px !important;
+.modal-close:hover,
+.close-btn:hover { color: var(--ink) !important; background: var(--surface-hover) !important; }
+.modal-body,
+.details-content {
+    padding: 20px !important;
     color: var(--ink) !important;
     font-size: 13px !important;
+    line-height: 1.6 !important;
 }
 .modal-footer {
     border-top: 1px solid var(--border-hairline) !important;
     padding: 12px 20px !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+}
+
+/* Details modal — URL header + section grids */
+.details-url {
+    background: var(--panel) !important;
+    border: 1px solid var(--border-hairline) !important;
+    border-radius: 6px !important;
+    padding: 10px 14px !important;
+    color: var(--primary) !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+    font-size: 12px !important;
+    word-break: break-all !important;
+    margin-bottom: 16px !important;
+}
+.details-sections {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+}
+.details-section {
+    background: var(--card) !important;
+    border: 1px solid var(--border-hairline) !important;
+    border-radius: 8px !important;
+    padding: 14px 16px !important;
+}
+.details-section h4 {
+    color: var(--ink) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    margin: 0 0 10px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid var(--border-line) !important;
+}
+.details-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    font-size: 12px !important;
+}
+.details-grid > div {
+    color: var(--fg-secondary) !important;
+    padding: 4px 0 !important;
+    word-break: break-word !important;
+}
+.details-grid strong {
+    color: var(--fg-muted) !important;
+    font-weight: 500 !important;
+    margin-right: 6px !important;
 }
 
 /* Settings */
