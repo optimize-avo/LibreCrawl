@@ -2,6 +2,12 @@
 
 # Start LibreCrawl - tries Docker first, falls back to Python
 
+# Build Tailwind CSS for UI redesign v2
+if [ -f package.json ]; then
+  echo "Building Tailwind CSS..."
+  npm run build:css || echo "Warning: CSS build failed; continuing with last build (if any)."
+fi
+
 echo "Checking for Docker..."
 if command -v docker &> /dev/null && command -v docker compose &> /dev/null; then
     echo "Docker found! Starting LibreCrawl with Docker..."
