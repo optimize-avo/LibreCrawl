@@ -93,6 +93,89 @@
             color: var(--fg-muted);
             font-variant-numeric: tabular-nums;
         }
+        .instance-card {
+            background: var(--card);
+            border: 1px solid var(--border-hairline);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .instance-header {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 10px;
+        }
+        .instance-id {
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--ink);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .instance-badge {
+            display: inline-flex;
+            padding: 1px 6px;
+            font-size: 10px;
+            border-radius: 9999px;
+            border: 1px solid var(--border-hairline);
+            color: var(--fg-muted);
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .metric {
+            background: var(--panel);
+            border: 1px solid var(--border-line);
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .metric-label {
+            color: var(--fg-muted);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .metric-value {
+            color: var(--ink);
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 2px;
+            font-variant-numeric: tabular-nums;
+        }
+        .metric-subtext {
+            color: var(--fg-muted);
+            font-size: 11px;
+            margin-top: 2px;
+        }
+        .estimates-section {
+            border-top: 1px solid var(--border-line);
+            padding-top: 8px;
+            margin-top: 8px;
+        }
+        .estimates-title {
+            color: var(--fg-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
+        }
+        .estimate-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 2px 0;
+        }
+        .estimate-label { color: var(--fg-muted); }
+        .estimate-value { color: var(--ink); font-variant-numeric: tabular-nums; }
+        .highlight-value { color: var(--primary); font-weight: 600; }
+        .warning-value  { color: var(--warning); font-weight: 600; }
+        .error-value    { color: var(--error); font-weight: 600; }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--fg-muted);
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
