@@ -35,6 +35,13 @@
   --error: #ef4444;
   --destructive: #ff6a5e;
 
+  /* Glow alpha + semantic borders — split out so components.css has zero literal colors */
+  --primary-glow-strong: rgba(0, 194, 184, 0.10);
+  --primary-glow-soft:   rgba(0, 194, 184, 0.06);
+  --success-border:      rgba(34, 192, 122, 0.3);
+  --warning-border:      rgba(245, 158, 11, 0.3);
+  --error-border:        rgba(239, 68, 68, 0.3);
+
   /* Glass */
   --bg-glass: rgba(20, 28, 27, 0.45);
   --bg-glass-hover: rgba(20, 28, 27, 0.55);

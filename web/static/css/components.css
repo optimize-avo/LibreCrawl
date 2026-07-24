@@ -40,8 +40,8 @@
 /* Ambient background */
 .canvas-ambient {
   background:
-    radial-gradient(60% 50% at 15% 20%, rgba(0, 194, 184, 0.10), transparent 70%),
-    radial-gradient(50% 40% at 85% 80%, rgba(0, 194, 184, 0.06), transparent 70%),
+    radial-gradient(60% 50% at 15% 20%, var(--primary-glow-strong), transparent 70%),
+    radial-gradient(50% 40% at 85% 80%, var(--primary-glow-soft), transparent 70%),
     var(--bg);
   animation: ambient-drift 20s ease-in-out infinite alternate;
 }
@@ -179,9 +179,9 @@
   border-radius: 9999px;
   border: 1px solid var(--border-hairline);
 }
-.pill-success { color: var(--success); border-color: rgba(34, 192, 122, 0.3); }
-.pill-warning { color: var(--warning); border-color: rgba(245, 158, 11, 0.3); }
-.pill-error   { color: var(--error);   border-color: rgba(239, 68, 68, 0.3); }
+.pill-success { color: var(--success); border-color: var(--success-border); }
+.pill-warning { color: var(--warning); border-color: var(--warning-border); }
+.pill-error   { color: var(--error);   border-color: var(--error-border); }
 .pill-info    { color: var(--primary); border-color: var(--border-hairline); }
 
 /* Progress bar */
