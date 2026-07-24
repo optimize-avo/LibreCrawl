@@ -1,0 +1,214 @@
+/* index-overrides.css — loaded AFTER styles.css to re-paint the main crawler
+   UI in design-v2 tokens. Do NOT touch selectors that app.js queries dynamically
+   (tbody, .tab-btn, .tab-pane, .filter-item, etc.) — those stay wired to the
+   existing structure. This file only changes appearance. */
+
+/* Body / canvas */
+body {
+    background: var(--bg) !important;
+    color: var(--ink) !important;
+}
+.app-container {
+    background: var(--bg) !important;
+}
+
+/* Top header */
+.header {
+    background: var(--bg-glass) !important;
+    backdrop-filter: var(--blur-glass) !important;
+    -webkit-backdrop-filter: var(--blur-glass) !important;
+    border-bottom: 1px solid var(--border-hairline) !important;
+    color: var(--ink) !important;
+}
+.app-title {
+    color: var(--ink) !important;
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    background-clip: initial !important;
+    -webkit-text-fill-color: var(--ink) !important;
+}
+.app-title::after {
+    background: var(--primary) !important;
+}
+.header-actions { color: var(--fg-secondary) !important; }
+
+/* Buttons (override the legacy gradient/flat styles) */
+.btn {
+    background: var(--card) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--border-hairline) !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+.btn:hover { background: var(--muted) !important; }
+.btn-primary {
+    background: var(--primary) !important;
+    color: var(--primary-fg) !important;
+    border-color: var(--primary) !important;
+}
+.btn-primary:hover { background: var(--primary-hover) !important; }
+.btn-secondary {
+    background: var(--panel-2) !important;
+    color: var(--ink) !important;
+}
+.btn-success {
+    background: var(--success) !important;
+    color: #052b1a !important;
+    border-color: var(--success) !important;
+}
+.btn-danger {
+    background: var(--card) !important;
+    color: var(--error) !important;
+    border-color: var(--error-border) !important;
+}
+.btn:disabled { opacity: 0.5 !important; cursor: not-allowed !important; }
+
+/* URL input + form controls */
+.input-label { color: var(--fg-muted) !important; }
+.url-input,
+input[type="text"].url-input,
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea {
+    background: var(--card) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--border-functional) !important;
+    box-shadow: none !important;
+}
+.url-input::placeholder,
+input::placeholder { color: var(--fg-muted) !important; }
+.url-input:focus,
+input:focus,
+textarea:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(0, 194, 184, 0.25) !important;
+    outline: none !important;
+}
+
+/* Progress bar */
+.progress-container { color: var(--fg-muted) !important; }
+.progress-bar { background: var(--panel-2) !important; }
+.progress-fill { background: var(--primary) !important; }
+.progress-text { color: var(--fg-muted) !important; }
+
+/* Sidebar / filters */
+.sidebar {
+    background: var(--bg-rail) !important;
+    border-right: 1px solid var(--border-line) !important;
+    color: var(--ink) !important;
+}
+.sidebar-section { color: var(--ink) !important; }
+.sidebar-title {
+    color: var(--fg-muted) !important;
+    border-bottom-color: var(--border-line) !important;
+}
+.filter-header {
+    color: var(--fg-muted) !important;
+    background: transparent !important;
+    border-bottom-color: var(--border-line) !important;
+}
+.filter-item {
+    color: var(--ink) !important;
+    border-bottom-color: var(--border-line) !important;
+    background: transparent !important;
+}
+.filter-item:hover { background: var(--surface-hover) !important; }
+.filter-item.active { background: var(--surface-active) !important; }
+.filter-name { color: var(--ink) !important; }
+.filter-count {
+    background: var(--panel-2) !important;
+    color: var(--fg-muted) !important;
+}
+
+/* Tabs */
+.tab-btn,
+button.tab-btn {
+    background: transparent !important;
+    color: var(--fg-muted) !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+}
+.tab-btn:hover { color: var(--ink) !important; }
+.tab-btn.active {
+    color: var(--ink) !important;
+    background: var(--panel-2) !important;
+    border-bottom-color: var(--primary) !important;
+}
+.tab-pane { background: transparent !important; color: var(--ink) !important; }
+
+/* Tables */
+table, .lc-table, table.data-table {
+    background: var(--card) !important;
+    color: var(--ink) !important;
+}
+table thead th, .data-table thead th {
+    background: var(--panel) !important;
+    color: var(--fg-muted) !important;
+    border-bottom-color: var(--border-hairline) !important;
+}
+table tbody td, .data-table tbody td {
+    background: var(--card) !important;
+    color: var(--ink) !important;
+    border-bottom-color: var(--border-line) !important;
+}
+table tbody tr:hover td, .data-table tbody tr:hover td { background: var(--muted) !important; }
+table tbody tr.selected td { border-left: 2px solid var(--primary) !important; }
+
+/* Detail panel / modals */
+.details-modal-overlay {
+    background: rgba(0, 0, 0, 0.6) !important;
+}
+.details-modal,
+.detail-panel {
+    background: var(--bg-rail) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--border-hairline) !important;
+}
+
+/* Export dropdown */
+.export-dropdown-menu {
+    background: var(--popover) !important;
+    border-color: var(--border-hairline) !important;
+    color: var(--ink) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+.export-dropdown-item { color: var(--ink) !important; }
+.export-dropdown-item:hover { background: var(--muted) !important; }
+.export-dropdown-divider { background: var(--border-hairline) !important; }
+
+/* Status pills / toast / notification cards */
+.status-pill,
+.pill {
+    background: var(--card) !important;
+    color: var(--ink) !important;
+    border-color: var(--border-hairline) !important;
+}
+.status-ok, .status-success, .pill-success { color: var(--success) !important; border-color: var(--success-border) !important; }
+.status-error, .status-failed, .pill-error { color: var(--error) !important; border-color: var(--error-border) !important; }
+.status-warning, .pill-warning { color: var(--warning) !important; border-color: var(--warning-border) !important; }
+.status-info, .pill-info { color: var(--primary) !important; border-color: var(--border-hairline) !important; }
+
+#demoLimitNotification {
+    background: var(--warning-bg) !important;
+    color: var(--warning) !important;
+    border-color: var(--warning-border) !important;
+}
+
+/* Toast */
+.toast,
+.notification {
+    background: var(--popover) !important;
+    color: var(--ink) !important;
+    border-color: var(--border-hairline) !important;
+}
+
+/* Scrollbars (webkit) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--panel-2); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* Selection */
+::selection { background: rgba(0, 194, 184, 0.35); color: var(--ink); }
