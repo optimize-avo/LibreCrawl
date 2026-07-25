@@ -869,6 +869,14 @@ class WebCrawler:
                 set_crawl_status(self.crawl_id, 'demo_stopped')
             else:
                 set_crawl_status(self.crawl_id, 'completed')
+                # Auto-set crawl_name if not set
+                try:
+                    from src.crawl_db import get_crawl_by_id, update_crawl_name
+                    crawl_info = get_crawl_by_id(self.crawl_id)
+                    if crawl_info and not crawl_info.get('crawl_name'):
+                        update_crawl_name(self.crawl_id, self.base_domain)
+                except Exception:
+                    pass
 
         # Mark crawl as complete
         self.is_running = False
