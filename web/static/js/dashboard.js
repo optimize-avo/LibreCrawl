@@ -1,247 +1,235 @@
 // ========================================
-// Dashboard Functions
+// Dashboard - Domain Sidebar + Crawl Detail
 // ========================================
 
-async function openDashboard() {
-    const modal = document.getElementById('dashboardModal');
-    const content = document.getElementById('dashboardContent');
+// Dashboard state
+let selectedDomain = null;
+let compareMode = false;
+let selectedCrawls = new Set();
+let allDomains = [];
 
-    // Show modal
-    modal.style.display = 'flex';
-
-    // Load crawls
+async function loadDashboard() {
     try {
-        const response = await fetch('/api/crawls/list');
+        const response = await fetch('/api/crawls/history');
         const data = await response.json();
 
         if (!data.success) {
-            content.innerHTML = `<p style="color: #ef4444;">Error loading crawls: ${data.error}</p>`;
+            console.error('Failed to load history:', data.error);
             return;
         }
 
-        const crawls = data.crawls || [];
+        allDomains = data.domains || [];
+        renderDomainSidebar();
 
-        if (crawls.length === 0) {
-            content.innerHTML = `<p style="text-align: center; color: #9ca3af;">No saved crawls found.</p>`;
-            return;
+        // Auto-select first domain if available
+        if (allDomains.length > 0 && !selectedDomain) {
+            selectDomain(allDomains[0].domain);
+        } else if (allDomains.length === 0) {
+            renderCrawlDetailEmpty();
         }
-
-        // Build table
-        let html = `
-            <table class="data-table" style="width: 100%; table-layout: fixed;">
-                <thead>
-                    <tr>
-                        <th style="width: 180px;">Date</th>
-                        <th style="width: 200px;">Domain</th>
-                        <th style="width: 80px;">URLs</th>
-                        <th style="width: 100px;">Status</th>
-                        <th style="width: 280px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
-        crawls.forEach(crawl => {
-            const date = new Date(crawl.started_at).toLocaleString();
-            const domain = crawl.base_domain || crawl.base_url;
-            const status = crawl.status || 'unknown';
-            const statusColor = status === 'completed' ? '#10b981' : status === 'running' ? '#3b82f6' : status === 'paused' ? '#f59e0b' : '#6b7280';
-
-            html += `
-                <tr>
-                    <td>${date}</td>
-                    <td>${domain}</td>
-                    <td>${crawl.urls_crawled || 0}</td>
-                    <td><span style="color: ${statusColor};">${status}</span></td>
-                    <td style="white-space: nowrap;">
-                        <button class="btn btn-primary" style="margin-right: 5px; padding: 6px 12px; font-size: 13px;" onclick="loadCrawlFromDashboard(${crawl.id})">Load</button>
-                        ${['paused', 'failed', 'running', 'stopped'].includes(status) ? `<button class="btn btn-secondary" style="margin-right: 5px; padding: 6px 12px; font-size: 13px;" onclick="resumeCrawlFromDashboard(${crawl.id})">Resume</button>` : ''}
-                        <button class="btn btn-danger" style="padding: 6px 12px; font-size: 13px;" onclick="deleteCrawlFromDashboard(${crawl.id})">Delete</button>
-                    </td>
-                </tr>
-            `;
-        });
-
-        html += `
-                </tbody>
-            </table>
-        `;
-
-        content.innerHTML = html;
-
     } catch (error) {
         console.error('Error loading dashboard:', error);
-        content.innerHTML = `<p style="color: #ef4444;">Error loading crawls.</p>`;
     }
 }
 
-function closeDashboard() {
-    document.getElementById('dashboardModal').style.display = 'none';
-}
+function renderDomainSidebar() {
+    const container = document.getElementById('domainList');
+    if (!container) return;
 
-async function loadCrawlFromDashboard(crawlId) {
-    if (!confirm('Load this crawl? Any unsaved current data will be lost.')) return;
-
-    try {
-        // Call backend to load data into current crawler
-        const response = await fetch(`/api/crawls/${crawlId}/load`, {
-            method: 'POST'
-        });
-        const data = await response.json();
-
-        if (!data.success) {
-            alert('Error: ' + (data.error || data.message));
-            return;
-        }
-
-        // Close dashboard
-        closeDashboard();
-
-        // Fetch the loaded data
-        const statusResponse = await fetch('/api/crawl_status');
-        const statusData = await statusResponse.json();
-
-        // Clear UI
-        clearAllTables();
-        resetStats();
-
-        // Populate data
-        crawlState.urls = [];
-        crawlState.links = statusData.links || [];
-        crawlState.issues = statusData.issues || [];
-        crawlState.stats = statusData.stats || {};
-        crawlState.baseUrl = statusData.stats?.baseUrl || '';
-
-        // Set URL input
-        if (crawlState.baseUrl) {
-            document.getElementById('urlInput').value = crawlState.baseUrl;
-        }
-
-        // Add URLs to tables
-        if (statusData.urls && statusData.urls.length > 0) {
-            statusData.urls.forEach(url => addUrlToTable(url));
-        }
-
-        // Load links
-        if (statusData.links && statusData.links.length > 0) {
-            crawlState.pendingLinks = statusData.links;
-        }
-
-        // Load issues
-        if (statusData.issues && statusData.issues.length > 0) {
-            crawlState.pendingIssues = statusData.issues;
-        }
-
-        // Update displays
-        updateStatsDisplay();
-        updateFilterCounts();
-        updateStatusCodesTable();
-        updateCrawlButtons();
-        updateStatus(`Loaded: ${statusData.urls?.length || 0} URLs`);
-
-        showNotification('Crawl loaded successfully', 'success');
-
-    } catch (error) {
-        console.error('Error loading crawl:', error);
-        alert('Error loading crawl');
+    if (allDomains.length === 0) {
+        container.innerHTML = '<div style="padding:16px;color:var(--fg-muted);font-size:13px;text-align:center;">No crawls yet</div>';
+        return;
     }
+
+    container.innerHTML = allDomains.map(d => `
+        <div class="domain-item ${selectedDomain === d.domain ? 'active' : ''}"
+             onclick="selectDomain('${d.domain.replace(/'/g, "\\'")}')">
+            <div class="domain-name">${escapeHtml(d.domain)}</div>
+            <div class="domain-count">${d.crawl_count} crawl${d.crawl_count !== 1 ? 's' : ''}</div>
+        </div>
+    `).join('');
 }
 
-async function resumeCrawlFromDashboard(crawlId) {
-    if (!confirm('Resume this crawl? Any unsaved current data will be lost.')) return;
+function selectDomain(domain) {
+    selectedDomain = domain;
+    selectedCrawls.clear();
+    compareMode = false;
+    renderDomainSidebar();
+    renderCrawlDetail();
+}
 
-    try {
-        // Call backend to resume
-        const response = await fetch(`/api/crawls/${crawlId}/resume`, {
-            method: 'POST'
-        });
-        const data = await response.json();
+function renderCrawlDetailEmpty() {
+    const container = document.getElementById('crawlDetail');
+    if (!container) return;
+    container.innerHTML = '<div class="empty-state"><p>Select a domain to view crawl history</p></div>';
+}
 
-        if (!data.success) {
-            alert('Error: ' + (data.error || data.message));
-            return;
-        }
+function renderCrawlDetail() {
+    const container = document.getElementById('crawlDetail');
+    if (!container) return;
 
-        // Close dashboard
-        closeDashboard();
-
-        // Fetch the loaded data
-        const statusResponse = await fetch('/api/crawl_status');
-        const statusData = await statusResponse.json();
-
-        // Clear UI
-        clearAllTables();
-        resetStats();
-
-        // Populate data
-        crawlState.urls = [];
-        crawlState.links = statusData.links || [];
-        crawlState.issues = statusData.issues || [];
-        crawlState.stats = statusData.stats || {};
-        crawlState.baseUrl = statusData.stats?.baseUrl || '';
-
-        // Set URL input
-        if (crawlState.baseUrl) {
-            document.getElementById('urlInput').value = crawlState.baseUrl;
-        }
-
-        // Add URLs to tables
-        if (statusData.urls && statusData.urls.length > 0) {
-            statusData.urls.forEach(url => addUrlToTable(url));
-        }
-
-        // Load links
-        if (statusData.links && statusData.links.length > 0) {
-            crawlState.pendingLinks = statusData.links;
-        }
-
-        // Load issues
-        if (statusData.issues && statusData.issues.length > 0) {
-            crawlState.pendingIssues = statusData.issues;
-        }
-
-        // Set crawl as running
-        if (statusData.status === 'running') {
-            crawlState.isRunning = true;
-            crawlState.isPaused = false;
-            crawlState.startTime = new Date();
-            showProgress();
-            updateCrawlButtons();
-            pollCrawlProgress();
-        }
-
-        // Update displays
-        updateStatsDisplay();
-        updateFilterCounts();
-        updateStatusCodesTable();
-        updateStatus('Crawl resumed');
-
-        showNotification('Crawl resumed successfully', 'success');
-
-    } catch (error) {
-        console.error('Error resuming crawl:', error);
-        alert('Error resuming crawl');
+    const domainData = allDomains.find(d => d.domain === selectedDomain);
+    if (!domainData) {
+        renderCrawlDetailEmpty();
+        return;
     }
+
+    const crawls = domainData.crawls || [];
+    const totalIssues = crawls.reduce((sum, c) => sum + (c.issues_count || 0), 0);
+
+    let html = `
+        <div class="domain-header">
+            <div>
+                <h1>${escapeHtml(domainData.domain)}</h1>
+                <p class="domain-stats">${domainData.crawl_count} crawl${domainData.crawl_count !== 1 ? 's' : ''} · ${totalIssues} total issues</p>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button class="btn ${compareMode ? 'btn-primary' : ''}" onclick="toggleCompareMode()">
+                    ${compareMode ? 'Cancel Compare' : 'Compare Runs'}
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Compare bar
+    if (compareMode && selectedCrawls.size === 2) {
+        const ids = Array.from(selectedCrawls);
+        html += `
+            <div class="compare-bar">
+                <span style="font-size:13px;font-weight:500;">2 crawls selected for comparison</span>
+                <a href="/compare?id_a=${ids[0]}&id_b=${ids[1]}" class="compare-link">Compare Now</a>
+            </div>
+        `;
+    }
+
+    if (crawls.length === 0) {
+        html += '<div class="empty-state"><p>No crawls for this domain</p></div>';
+        container.innerHTML = html;
+        return;
+    }
+
+    // Crawl list
+    crawls.forEach(crawl => {
+        const date = new Date(crawl.started_at).toLocaleString();
+        const issues = crawl.issues_count || 0;
+        const isSelected = selectedCrawls.has(crawl.id);
+
+        html += `
+            <div class="crawl-card ${isSelected ? 'selected' : ''}">
+                ${compareMode ? `<input type="checkbox" class="compare-checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCrawlSelect(${crawl.id})">` : ''}
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span style="font-size:13px;font-weight:500;color:var(--ink);">${date}</span>
+                        <span class="status-badge status-${crawl.status}">${crawl.status}</span>
+                        ${crawl.display_name ? `<span style="font-size:12px;color:var(--fg-muted);">— ${escapeHtml(crawl.display_name)}</span>` : ''}
+                    </div>
+                    <div style="display:flex;gap:16px;font-size:12px;color:var(--fg-muted);">
+                        <span>${crawl.urls_crawled || 0} URLs</span>
+                        <span style="color:${issues > 0 ? 'var(--error)' : 'var(--success)'};">${issues} issues</span>
+                        ${crawl.completed_at ? `<span>${formatDuration(crawl.started_at, crawl.completed_at)}</span>` : ''}
+                    </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-shrink:0;">
+                    ${crawl.urls_crawled > 0 ? `<button class="action-btn" onclick="loadCrawl(${crawl.id})">Load</button>` : ''}
+                    <button class="action-btn" onclick="renameCrawl(${crawl.id}, '${(crawl.display_name || '').replace(/'/g, "\\'")}')">Rename</button>
+                    <button class="action-btn danger" onclick="deleteCrawl(${crawl.id})">Delete</button>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
 }
 
-async function deleteCrawlFromDashboard(crawlId) {
-    if (!confirm('Delete this crawl permanently? This cannot be undone.')) return;
+// ========================================
+// Compare Mode
+// ========================================
 
+function toggleCompareMode() {
+    compareMode = !compareMode;
+    selectedCrawls.clear();
+    renderCrawlDetail();
+}
+
+function toggleCrawlSelect(id) {
+    if (selectedCrawls.has(id)) {
+        selectedCrawls.delete(id);
+    } else if (selectedCrawls.size < 2) {
+        selectedCrawls.add(id);
+    }
+    renderCrawlDetail();
+}
+
+// ========================================
+// Helpers
+// ========================================
+
+function formatDuration(start, end) {
+    const diff = new Date(end) - new Date(start);
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// ========================================
+// Crawl Actions
+// ========================================
+
+async function loadCrawl(crawlId) {
+    if (!confirm('Load this crawl? Current data will be lost.')) return;
     try {
-        const response = await fetch(`/api/crawls/${crawlId}/delete`, {
-            method: 'DELETE'
-        });
+        const response = await fetch(`/api/crawls/${crawlId}/load`, { method: 'POST' });
         const data = await response.json();
-
         if (data.success) {
-            showNotification('Crawl deleted', 'success');
-            // Reload dashboard
-            openDashboard();
+            sessionStorage.setItem('force_ui_refresh', 'true');
+            window.location.href = '/';
         } else {
-            alert('Error deleting crawl: ' + data.error);
+            alert('Error: ' + (data.error || data.message));
         }
     } catch (error) {
-        console.error('Error deleting crawl:', error);
+        alert('Error loading crawl: ' + error.message);
+    }
+}
+
+async function renameCrawl(crawlId, currentName) {
+    const newName = prompt('Crawl name:', currentName);
+    if (newName === null || newName.trim() === '') return;
+    try {
+        await fetch(`/api/crawls/${crawlId}/save-name`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ crawl_name: newName.trim() })
+        });
+        loadDashboard();
+    } catch (error) {
+        alert('Error renaming crawl');
+    }
+}
+
+async function deleteCrawl(crawlId) {
+    if (!confirm('Delete this crawl permanently?')) return;
+    try {
+        const response = await fetch(`/api/crawls/${crawlId}/delete`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.success) loadDashboard();
+        else alert('Error: ' + data.error);
+    } catch (error) {
         alert('Error deleting crawl');
     }
 }
+
+// ========================================
+// Initialize
+// ========================================
+
+loadDashboard();
