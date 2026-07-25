@@ -42,8 +42,8 @@
       </div>
     </div>
 
-    <button id="saveCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed" onclick="saveCrawl()" disabled>Save</button>
-    <button id="loadCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted" onclick="loadCrawl()">Load</button>
+    <button id="saveCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed" onclick="openSaveModal()" disabled>Save</button>
+    <button id="loadCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted" onclick="openLoadModal()">Load</button>
   </div>
 
   <div id="progressContainer" class="hidden mt-3 flex items-center gap-3">
