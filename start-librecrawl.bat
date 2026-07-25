@@ -11,14 +11,14 @@ timeout /t 3 /nobreak >nul
 echo.
 echo ================================================================================
 echo LibreCrawl is running!
-echo Opening browser to http://localhost:5000
+echo Opening browser to http://localhost:5001
 echo.
 echo Press Ctrl+C to stop LibreCrawl
 echo DO NOT close this window or LibreCrawl will keep running!
 echo ================================================================================
 echo.
 
-start http://localhost:5000
+start http://localhost:5001
 docker compose logs -f
 docker compose down
 exit /b
@@ -35,7 +35,7 @@ if errorlevel 1 goto installdeps
 
 :rundirect
 echo Starting LibreCrawl...
-start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:5000"
+start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:5001"
 python main.py -l
 exit /b
 
