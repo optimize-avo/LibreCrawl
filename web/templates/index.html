@@ -2,42 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>LibreCrawl - SEO Spider</title>
+    <title>AVO Crawl - SEO Spider</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/tw.css">
+    <link rel="stylesheet" href="/static/css/components.css">
     <link rel="stylesheet" href="/static/css/index-overrides.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 </head>
 <body>
     <div class="app-container">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1 class="app-title">LibreCrawl</h1>
-                <div class="header-actions">
-                    <span id="userInfo" style="margin-right: 15px; color: #6b7280; font-size: 14px;"></span>
-                    <button class="btn btn-secondary" onclick="openDashboard()">Dashboard</button>
-                    <button class="btn btn-secondary" onclick="openSettings()">Settings</button>
-                    <div class="export-dropdown">
-                        <button class="btn btn-secondary export-dropdown-btn" onclick="toggleExportMenu()">Export ▾</button>
-                        <div class="export-dropdown-menu" id="exportDropdownMenu">
-                            <div class="export-dropdown-item" onclick="exportData('all')">Export All Data</div>
-                            <div class="export-dropdown-item" onclick="exportData('overview')">Export: Overview</div>
-                            <div class="export-dropdown-item" onclick="exportData('internal')">Export: Internal URLs</div>
-                            <div class="export-dropdown-item" onclick="exportData('external')">Export: External URLs</div>
-                            <div class="export-dropdown-item" onclick="exportData('links')">Export: Links</div>
-                            <div class="export-dropdown-item" onclick="exportData('issues')">Export: Issues</div>
-                            <div class="export-dropdown-divider"></div>
-                            <div class="export-dropdown-item" onclick="exportData('all_csv')">Export All (CSV)</div>
-                            <div class="export-dropdown-item" onclick="exportData('all_json')">Export All (JSON)</div>
-                        </div>
-                    </div>
-                    <button class="btn btn-success" id="saveCrawlBtn" onclick="saveCrawl()" disabled>Save Crawl</button>
-                    <button class="btn btn-primary" id="loadCrawlBtn" onclick="loadCrawl()">Load Crawl</button>
-                    <button class="btn btn-danger" onclick="logout()" style="margin-left: 10px;">Logout</button>
-                </div>
-            </div>
-        </header>
+        <!-- Top Navigation Bar -->
+        {% include 'partials/_navbar.html' %}
 
         <!-- URL Input Section -->
         <section class="url-section">
@@ -71,15 +46,59 @@
                         </svg>
                         Clear
                     </button>
+                    <div class="export-dropdown">
+                        <button class="btn btn-secondary export-dropdown-btn" onclick="toggleExportMenu()">Export ▾</button>
+                        <div class="export-dropdown-menu" id="exportDropdownMenu">
+                            <div class="export-dropdown-item" onclick="exportData('all')">Export All Data</div>
+                            <div class="export-dropdown-item" onclick="exportData('overview')">Export: Overview</div>
+                            <div class="export-dropdown-item" onclick="exportData('internal')">Export: Internal URLs</div>
+                            <div class="export-dropdown-item" onclick="exportData('external')">Export: External URLs</div>
+                            <div class="export-dropdown-item" onclick="exportData('links')">Export: Links</div>
+                            <div class="export-dropdown-item" onclick="exportData('issues')">Export: Issues</div>
+                            <div class="export-dropdown-divider"></div>
+                            <div class="export-dropdown-item" onclick="exportData('all_csv')">Export All (CSV)</div>
+                            <div class="export-dropdown-item" onclick="exportData('all_json')">Export All (JSON)</div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="progress-container" id="progressContainer" style="display: none;">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
+                <div id="progressContainer" class="hidden url-progress">
+                    <div class="progress-track">
+                        <div class="progress-track-inner">
+                            <div id="progressFill" class="progress-fill" style="width:0%">
+                                <div class="glitch-layer glitch-a"></div>
+                                <div class="glitch-layer glitch-b"></div>
+                                <div class="progress-scanlines"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="url-progress-info">
+                        <span id="progressText" class="url-progress-text">Initializing...</span>
+                        <span id="progressCount" class="url-progress-count"></span>
+                    </div>
+                    <div class="url-progress-url">
+                        <span id="progressCurrentUrl" class="url-progress-current"></span>
+                    </div>
                 </div>
-                <span class="progress-text" id="progressText">Initializing...</span>
             </div>
         </section>
+
+        <!-- Background Crawl Reconnect Banner -->
+        <div id="reconnectBanner" style="display:none; background: linear-gradient(135deg, #1e40af, #3b82f6); color: white; padding: 12px 20px; border-radius: 10px; margin-bottom: 16px; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s;" onclick="reconnectToCrawl()">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 10px; height: 10px; border-radius: 50%; background: #4ade80; animation: pulse 2s infinite;"></div>
+                <div>
+                    <div id="reconnectBannerText" style="font-weight: 600; font-size: 14px;">Crawl sedang berjalan</div>
+                    <div id="reconnectBannerDetail" style="font-size: 12px; opacity: 0.85; margin-top: 2px;">Loading...</div>
+                </div>
+            </div>
+            <div style="font-size: 13px; opacity: 0.8;">Click to reconnect →</div>
+        </div>
+        <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        </style>
 
         <!-- Main Content -->
         <main class="main-content">
@@ -365,19 +384,16 @@
 
                         <div id="issues-tab" class="tab-pane">
                             <!-- Severity Filters -->
-                            <div class="filter-bar" style="margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; align-items: center;">
-                                <button class="filter-item active" onclick="filterIssues('all')" data-filter="all" style="background: #374151; border: 1px solid #4b5563; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; min-width: 120px;">
-                                    All Issues <span id="issues-all-count" style="opacity: 0.7;">(0)</span>
-                                </button>
-                                <button class="filter-item" onclick="filterIssues('error')" data-filter="error" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; min-width: 100px;">
-                                    <span>❌</span> Errors <span id="issues-error-count" style="opacity: 0.7;">(0)</span>
-                                </button>
-                                <button class="filter-item" onclick="filterIssues('warning')" data-filter="warning" style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); color: #f59e0b; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; min-width: 120px;">
-                                    <span>⚠️</span> Warnings <span id="issues-warning-count" style="opacity: 0.7;">(0)</span>
-                                </button>
-                                <button class="filter-item" onclick="filterIssues('info')" data-filter="info" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); color: #3b82f6; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; min-width: 90px;">
-                                    <span>ℹ️</span> Info <span id="issues-info-count" style="opacity: 0.7;">(0)</span>
-                                </button>
+                            <div style="display: flex; justify-content: flex-end; align-items: center; padding: 14px 16px 12px; width: 100%;">
+                                <div style="display: flex; gap: 8px; align-items: center; margin-right: 24px;">
+                                    <label style="color: #9ca3af; font-size: 13px; font-weight: 500;">Filter:</label>
+                                    <select onchange="filterIssues(this.value)" id="issuesFilterSelect" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #4b5563; background: #1f2937; color: white; font-size: 13px;">
+                                        <option value="all">All Issues (0)</option>
+                                        <option value="error">Errors (0)</option>
+                                        <option value="warning">Warnings (0)</option>
+                                        <option value="info">Info (0)</option>
+                                    </select>
+                                </div>
                             </div>
 
                             <div class="table-container">

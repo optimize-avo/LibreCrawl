@@ -28,6 +28,9 @@ let crawlState = {
 // Incremental polling instance
 let incrementalPoller = null;
 
+// Glitch interval for progress bar
+let glitchInterval = null;
+
 // Virtual Scrollers
 let virtualScrollers = {
     overview: null,
@@ -59,60 +62,38 @@ async function initializeApp() {
     // Load user info
     loadUserInfo();
 
-    // DEBUG: Check sessionStorage
-    console.log('DEBUG: Checking sessionStorage force_ui_refresh:', sessionStorage.getItem('force_ui_refresh'));
-
-    // Check if we just loaded a crawl from dashboard
+    // Check if we just opened a crawl from dashboard
     if (sessionStorage.getItem('force_ui_refresh') === 'true') {
-        console.log('DEBUG: Found force_ui_refresh flag, loading crawl data...');
         sessionStorage.removeItem('force_ui_refresh');
-
         try {
-            // Fetch the loaded data immediately with FULL refresh (no incremental)
             const response = await fetch('/api/crawl_status');
             const data = await response.json();
 
-            // DEBUG: Log the full response
-            console.log('DEBUG: Full /api/crawl_status response:', JSON.stringify(data, null, 2));
-
-            // Clear existing data first
             clearAllTables();
             resetStats();
 
-            // Force populate all data
             crawlState.urls = [];
             crawlState.links = data.links || [];
             crawlState.issues = data.issues || [];
             crawlState.stats = data.stats || {};
             crawlState.baseUrl = data.stats?.baseUrl || '';
 
-            // Set URL input
             if (crawlState.baseUrl) {
                 document.getElementById('urlInput').value = crawlState.baseUrl;
             }
 
-            // Add each URL to tables
             if (data.urls && data.urls.length > 0) {
                 data.urls.forEach(url => addUrlToTable(url));
             }
-
-            // Load links if present
             if (data.links && data.links.length > 0) {
                 crawlState.pendingLinks = data.links;
-                // If links tab is active, load them immediately
-                if (isLinksTabActive()) {
-                    updateLinksTable(data.links);
-                }
+                if (isLinksTabActive()) updateLinksTable(data.links);
             }
-
-            // Load issues if present
             if (data.issues && data.issues.length > 0) {
                 crawlState.pendingIssues = data.issues;
-                // If issues tab is active, load them immediately
                 if (isIssuesTabActive()) {
                     updateIssuesTable(data.issues);
                 } else {
-                    // Update badge count even if tab not active
                     const issuesTabButton = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.textContent.includes('Issues'));
                     if (issuesTabButton && data.issues.length > 0) {
                         const errorCount = data.issues.filter(i => i.type === 'error').length;
@@ -125,51 +106,39 @@ async function initializeApp() {
                 }
             }
 
-            // Update all displays
             updateStatsDisplay();
             updateFilterCounts();
             updateStatusCodesTable();
             updateCrawlButtons();
 
-            // Check if the crawl is currently running (resumed from dashboard)
             if (data.status === 'running') {
-                // Set crawl state to running
                 crawlState.isRunning = true;
                 crawlState.isPaused = false;
-                crawlState.startTime = new Date(); // Set start time to now for timer
-
-                // Show progress UI
+                crawlState.startTime = new Date();
                 showProgress();
-
-                // Update buttons for running state
                 updateCrawlButtons();
-
-                // Start polling for updates
                 updateStatus('Crawl resumed - updating...');
                 pollCrawlProgress();
             } else {
-                // Crawl is not running, just loaded data
-                updateStatus(`Loaded crawl: ${data.stats.crawled} URLs, ${data.links?.length || 0} links, ${data.issues?.length || 0} issues`);
+                updateStatus(`Loaded: ${data.stats.crawled} URLs, ${data.links?.length || 0} links, ${data.issues?.length || 0} issues`);
             }
-
-            console.log('Loaded crawl from database:', {
-                urls: data.urls?.length || 0,
-                links: data.links?.length || 0,
-                issues: data.issues?.length || 0,
-                stats: data.stats,
-                status: data.status,
-                isRunning: crawlState.isRunning
-            });
         } catch (error) {
             console.error('Error loading crawl data:', error);
             updateStatus('Error loading crawl data');
         }
     }
 
+    // Check for active background crawls
+    checkActiveCrawls();
+
     // Set initial focus
     document.getElementById('urlInput').focus();
 
     console.log('LibreCrawl initialized');
+}
+
+function openDashboard() {
+    window.location.href = '/dashboard';
 }
 
 function setupEventListeners() {
@@ -462,6 +431,8 @@ function updateCrawlData(data) {
         data.urls.forEach(url => {
             addUrlToTable(url);
         });
+        // Re-sort all URL tables by hierarchy after batch update
+        applyHierarchySortToAll();
     }
 
     // Update links tables only if Links tab is active to improve performance
@@ -516,23 +487,45 @@ function updateCrawlData(data) {
 
 function updateProgressText(data) {
     const progressText = document.getElementById('progressText');
+    const progressCount = document.getElementById('progressCount');
+    const progressCurrentUrl = document.getElementById('progressCurrentUrl');
     if (!progressText) return;
 
     if (data.is_running_pagespeed) {
         progressText.textContent = 'Running PageSpeed analysis...';
+        if (progressCount) progressCount.textContent = '';
+        if (progressCurrentUrl) progressCurrentUrl.textContent = '';
     } else if (data.status === 'completed') {
         progressText.textContent = 'Crawl completed';
+        if (progressCount) progressCount.textContent = '';
+        if (progressCurrentUrl) progressCurrentUrl.textContent = '';
+        // Apply hierarchy sort to all tables on crawl completion
+        applyHierarchySortToAll();
     } else if (data.status === 'running') {
         const stats = data.stats || crawlState.stats;
         if (stats.crawled === 0) {
-            progressText.textContent = 'Starting crawl...';
+            progressText.textContent = 'Crawling...';
+            if (progressCount) progressCount.textContent = 'Starting...';
         } else if (stats.discovered > stats.crawled) {
-            progressText.textContent = `Crawling... (${stats.crawled}/${stats.discovered} URLs)`;
+            progressText.textContent = 'Crawling...';
+            if (progressCount) progressCount.textContent = `${stats.crawled}/${stats.discovered} URLs`;
         } else {
-            progressText.textContent = `Finishing up... (${stats.crawled} URLs crawled)`;
+            progressText.textContent = 'Crawling...';
+            if (progressCount) progressCount.textContent = `${stats.crawled} URLs crawled`;
+        }
+
+        // Show current URL
+        if (progressCurrentUrl) {
+            if (data.current_url) {
+                progressCurrentUrl.textContent = 'Crawling ' + data.current_url;
+            } else {
+                progressCurrentUrl.textContent = '';
+            }
         }
     } else {
         progressText.textContent = 'Initializing...';
+        if (progressCount) progressCount.textContent = '';
+        if (progressCurrentUrl) progressCurrentUrl.textContent = '';
     }
 }
 
@@ -570,8 +563,6 @@ function updateCrawlButtons() {
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const clearBtn = document.getElementById('clearBtn');
-    const saveCrawlBtn = document.getElementById('saveCrawlBtn');
-    const loadCrawlBtn = document.getElementById('loadCrawlBtn');
 
     if (crawlState.isRunning) {
         if (crawlState.isPaused) {
@@ -593,8 +584,6 @@ function updateCrawlButtons() {
         startBtn.disabled = false;
         stopBtn.disabled = false;
         clearBtn.disabled = false;
-        saveCrawlBtn.disabled = true; // Disable during crawl
-        loadCrawlBtn.disabled = true; // Disable during crawl
     } else {
         startBtn.innerHTML = `
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -605,34 +594,48 @@ function updateCrawlButtons() {
         startBtn.disabled = false;
         stopBtn.disabled = true;
         clearBtn.disabled = false;
-
-        // Save button: only enabled if crawl is completed and has data
-        const hasData = crawlState.stats.crawled > 0;
-        saveCrawlBtn.disabled = !hasData;
-
-        // Load button: only enabled if no current crawl data
-        loadCrawlBtn.disabled = hasData;
     }
 }
 
 function showProgress() {
     const container = document.getElementById('progressContainer');
     const fill = document.getElementById('progressFill');
-    container.style.display = 'flex';
-    fill.classList.add('active'); // pulse animation while running
+    container.classList.remove('hidden'); // .hidden uses !important, inline style can't override
+    fill.classList.add('active'); // activation class for glitch animations
+
+    // Start glitch burst interval — every ~3 seconds, add .glitching for 200ms
+    if (!glitchInterval) {
+        glitchInterval = setInterval(() => {
+            fill.classList.add('glitching');
+            setTimeout(() => fill.classList.remove('glitching'), 200);
+        }, 3000);
+    }
 }
 
 function hideProgress() {
     const container = document.getElementById('progressContainer');
     const fill = document.getElementById('progressFill');
-    container.style.display = 'none';
+    container.classList.add('hidden');
     fill.classList.remove('active');
+    fill.classList.remove('glitching');
+
+    // Stop glitch burst interval
+    if (glitchInterval) {
+        clearInterval(glitchInterval);
+        glitchInterval = null;
+    }
+
+    // Clear current URL display
+    const currentUrlEl = document.getElementById('progressCurrentUrl');
+    if (currentUrlEl) currentUrlEl.textContent = '';
+    const countEl = document.getElementById('progressCount');
+    if (countEl) countEl.textContent = '';
 }
 
 function updateProgress(percentage) {
     const fill = document.getElementById('progressFill');
     fill.style.width = percentage + '%';
-    // Keep .active class on while a crawl is in progress so the pulse animation runs.
+    // Keep .active class on while a crawl is in progress so the glitch animations run.
     // showProgress() sets it on, this keeps it on, hideProgress() removes it.
     if (!fill.classList.contains('active')) fill.classList.add('active');
 }
@@ -1176,17 +1179,17 @@ function applyFilter(filterType) {
 function clearActiveFilters() {
     crawlState.filters.active = null;
 
-    // Reset all virtual scrollers to show full data
+    // Reset all virtual scrollers to show full data (hierarchy sorted)
     if (virtualScrollers.overview) {
-        virtualScrollers.overview.setData(crawlState.urls);
+        virtualScrollers.overview.setData(hierarchySort(crawlState.urls));
     }
     if (virtualScrollers.internal) {
         const internalUrls = crawlState.urls.filter(url => url.is_internal);
-        virtualScrollers.internal.setData(internalUrls);
+        virtualScrollers.internal.setData(hierarchySort(internalUrls));
     }
     if (virtualScrollers.external) {
         const externalUrls = crawlState.urls.filter(url => !url.is_internal);
-        virtualScrollers.external.setData(externalUrls);
+        virtualScrollers.external.setData(hierarchySort(externalUrls));
     }
 
     // Reset Status Codes table to show all data
@@ -1239,7 +1242,7 @@ function filterVirtualScrollerData(scrollerName, filterType) {
         });
     }
 
-    scroller.setData(filteredData);
+    scroller.setData(hierarchySort(filteredData));
 }
 
 // Legacy function - kept for compatibility but no longer used
@@ -1989,132 +1992,6 @@ function getScoreClass(score) {
     return 'score-poor';
 }
 
-// Save/Load Crawl Functions (DB-backed modals)
-async function openSaveModal() {
-    const modal = document.createElement('div');
-    modal.id = 'saveModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;';
-
-    const domain = crawlState.baseUrl ? new URL(crawlState.baseUrl).hostname : 'crawl';
-
-    modal.innerHTML = `
-        <div style="background:var(--card);border:1px solid var(--border-hairline);border-radius:12px;padding:24px;width:400px;max-width:90vw;">
-            <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--ink);">Save Crawl</h3>
-            <label style="display:block;font-size:12px;color:var(--fg-muted);margin-bottom:6px;">Crawl Name</label>
-            <input type="text" id="saveCrawlName" value="${domain}"
-                style="width:100%;background:var(--panel);border:1px solid var(--border-hairline);border-radius:6px;padding:8px 12px;font-size:13px;color:var(--ink);outline:none;box-sizing:border-box;"
-                placeholder="e.g. After fixing meta tags">
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
-                <button onclick="document.getElementById('saveModal').remove()"
-                    style="padding:6px 14px;background:var(--panel-2);color:var(--ink);border:1px solid var(--border-hairline);border-radius:6px;font-size:13px;cursor:pointer;">Cancel</button>
-                <button onclick="confirmSaveCrawl()"
-                    style="padding:6px 14px;background:var(--primary);color:var(--primary-fg);border:1px solid var(--primary);border-radius:6px;font-size:13px;cursor:pointer;">Save</button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-    document.getElementById('saveCrawlName').focus();
-    document.getElementById('saveCrawlName').select();
-}
-
-async function confirmSaveCrawl() {
-    const name = document.getElementById('saveCrawlName').value.trim();
-    if (!name) return;
-
-    try {
-        const statusResponse = await fetch('/api/crawl_status');
-        const statusData = await statusResponse.json();
-        const crawlId = statusData.crawl_id;
-
-        if (crawlId) {
-            await fetch(`/api/crawls/${crawlId}/save-name`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ crawl_name: name })
-            });
-        }
-
-        document.getElementById('saveModal').remove();
-        showNotification('Crawl saved to database', 'success');
-    } catch (error) {
-        console.error('Save error:', error);
-        showNotification('Failed to save crawl', 'error');
-    }
-}
-
-async function openLoadModal() {
-    const modal = document.createElement('div');
-    modal.id = 'loadModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;';
-
-    modal.innerHTML = `
-        <div style="background:var(--card);border:1px solid var(--border-hairline);border-radius:12px;padding:24px;width:500px;max-width:90vw;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
-            <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--ink);">Load Crawl</h3>
-            <div id="loadModalContent" style="flex:1;overflow-y:auto;color:var(--fg-muted);font-size:13px;">Loading...</div>
-            <div style="display:flex;justify-content:flex-end;margin-top:16px;">
-                <button onclick="document.getElementById('loadModal').remove()"
-                    style="padding:6px 14px;background:var(--panel-2);color:var(--ink);border:1px solid var(--border-hairline);border-radius:6px;font-size:13px;cursor:pointer;">Close</button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    try {
-        const response = await fetch('/api/crawls/history');
-        const data = await response.json();
-        const container = document.getElementById('loadModalContent');
-
-        if (!data.success || !data.domains || data.domains.length === 0) {
-            container.innerHTML = '<p style="text-align:center;padding:20px;">No saved crawls found.</p>';
-            return;
-        }
-
-        let html = '';
-        data.domains.forEach(domain => {
-            html += `<div style="margin-bottom:16px;">`;
-            html += `<div style="font-weight:600;color:var(--ink);margin-bottom:8px;">${domain.domain} <span style="font-weight:400;color:var(--fg-muted);">(${domain.crawl_count})</span></div>`;
-            domain.crawls.forEach(crawl => {
-                const date = new Date(crawl.started_at).toLocaleString();
-                const issues = crawl.issues_count || 0;
-                html += `
-                    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border-hairline);border-radius:6px;margin-bottom:4px;cursor:pointer;" onclick="loadFromModal(${crawl.id})" onmouseover="this.style.background='var(--muted)'" onmouseout="this.style.background='transparent'">
-                        <span style="flex:1;font-size:13px;color:var(--ink);">${date}</span>
-                        <span style="font-size:12px;color:var(--fg-muted);">${crawl.urls_crawled || 0} URLs</span>
-                        <span style="font-size:12px;color:${issues > 0 ? 'var(--error)' : 'var(--success)'};">${issues} issues</span>
-                        <span style="font-size:11px;color:var(--fg-muted);">${crawl.status}</span>
-                    </div>
-                `;
-            });
-            html += `</div>`;
-        });
-        container.innerHTML = html;
-
-    } catch (error) {
-        document.getElementById('loadModalContent').innerHTML = '<p style="color:var(--error);">Error loading history</p>';
-    }
-}
-
-async function loadFromModal(crawlId) {
-    if (!confirm('Load this crawl? Current data will be lost.')) return;
-
-    try {
-        const response = await fetch(`/api/crawls/${crawlId}/load`, { method: 'POST' });
-        const data = await response.json();
-
-        if (data.success) {
-            document.getElementById('loadModal').remove();
-            sessionStorage.setItem('force_ui_refresh', 'true');
-            window.location.href = '/';
-        } else {
-            alert('Error: ' + (data.error || data.message));
-        }
-    } catch (error) {
-        alert('Error loading crawl: ' + error.message);
-    }
-}
-
 // ========================================
 // Virtual Scroller Render Functions
 // ========================================
@@ -2248,6 +2125,44 @@ function renderIssueRow(row, issue, index) {
     `;
 }
 // =====================================================================
+// Hierarchy sort — orders URLs by path structure so parent pages appear
+// before their children.  / before /about before /about/team, etc.
+// =====================================================================
+
+function _hierarchyPathSegments(url) {
+    try {
+        return new URL(url).pathname.split('/').filter(s => s.length > 0);
+    } catch { return []; }
+}
+
+/** Comparator: depth-first hierarchy on path segments, then alphabetically. */
+function hierarchyCompare(a, b) {
+    const segA = _hierarchyPathSegments(a.url || '');
+    const segB = _hierarchyPathSegments(b.url || '');
+    const minLen = Math.min(segA.length, segB.length);
+
+    for (let i = 0; i < minLen; i++) {
+        const cmp = segA[i].localeCompare(segB[i]);
+        if (cmp !== 0) return cmp;
+    }
+    // Same prefix — shorter path (parent) comes first
+    return segA.length - segB.length;
+}
+
+function hierarchySort(arr) {
+    return [...arr].sort(hierarchyCompare);
+}
+
+/** Apply hierarchy sort to all virtual scrollers that hold URL data. */
+function applyHierarchySortToAll() {
+    ['overview', 'internal', 'external'].forEach(name => {
+        const scroller = virtualScrollers[name];
+        if (!scroller || !scroller.data || scroller.data.length === 0) return;
+        scroller.setData(hierarchySort(scroller.data));
+    });
+}
+
+// =====================================================================
 // Sortable tables — click a <th data-sort="key"> to sort that tab ASC/DESC.
 // sortTable(tab, key) sorts the virtual scroller's current dataset by
 // the named field and re-renders. Repeat clicks flip direction.
@@ -2301,18 +2216,27 @@ function sortTable(tab, key) {
     if (prev.key === key && prev.dir === 'asc') dir = 'desc';
     tableSortState[tab] = { key, dir };
 
-    // Compare: try numeric first, then string
-    const sorted = [...data].sort((a, b) => {
-        const va = fieldFn(a);
-        const vb = fieldFn(b);
-        let cmp;
-        if (typeof va === 'number' && typeof vb === 'number') {
-            cmp = va - vb;
-        } else {
-            cmp = String(va).localeCompare(String(vb));
-        }
-        return dir === 'asc' ? cmp : -cmp;
-    });
+    // Address column uses hierarchy sort (parent before children)
+    let sorted;
+    if (key === 'address') {
+        sorted = [...data].sort((a, b) => {
+            const cmp = hierarchyCompare(a, b);
+            return dir === 'asc' ? cmp : -cmp;
+        });
+    } else {
+        // Generic compare: numeric first, then string
+        sorted = [...data].sort((a, b) => {
+            const va = fieldFn(a);
+            const vb = fieldFn(b);
+            let cmp;
+            if (typeof va === 'number' && typeof vb === 'number') {
+                cmp = va - vb;
+            } else {
+                cmp = String(va).localeCompare(String(vb));
+            }
+            return dir === 'asc' ? cmp : -cmp;
+        });
+    }
 
     scroller.setData(sorted);
 
@@ -2440,4 +2364,109 @@ function sortLinksTable(tabId, key) {
         th.classList.remove('sort-asc', 'sort-desc');
         if (th.dataset.sort === key) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
     });
+}
+
+// ========================================
+// Background Crawl Reconnection
+// ========================================
+
+let activeCrawlReconnectId = null;
+
+async function checkActiveCrawls() {
+    try {
+        const response = await fetch('/api/my_active_crawls');
+        const data = await response.json();
+
+        if (data.success && data.crawls && data.crawls.length > 0) {
+            const crawl = data.crawls[0]; // Show first active crawl
+            showReconnectBanner(crawl);
+        }
+    } catch (error) {
+        console.log('No active crawls or error checking:', error);
+    }
+}
+
+function showReconnectBanner(crawl) {
+    const banner = document.getElementById('reconnectBanner');
+    if (!banner) return;
+
+    activeCrawlReconnectId = crawl.id;
+
+    const text = document.getElementById('reconnectBannerText');
+    const detail = document.getElementById('reconnectBannerDetail');
+
+    if (text) text.textContent = `${crawl.base_url} sedang dicrawl`;
+    if (detail) {
+        const pct = crawl.progress_percent || 0;
+        const crawled = crawl.urls_crawled || 0;
+        const discovered = crawl.urls_discovered || 0;
+        detail.textContent = `${pct}% — ${crawled}/${discovered} URLs`;
+    }
+
+    banner.style.display = 'flex';
+}
+
+async function reconnectToCrawl() {
+    if (!activeCrawlReconnectId) return;
+
+    try {
+        const response = await fetch(`/api/crawls/${activeCrawlReconnectId}/reconnect`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            // Hide banner
+            const banner = document.getElementById('reconnectBanner');
+            if (banner) banner.style.display = 'none';
+
+            // Load crawl data into UI
+            clearAllTables();
+            resetStats();
+
+            crawlState.urls = [];
+            crawlState.baseUrl = data.status?.base_url || '';
+
+            if (crawlState.baseUrl) {
+                document.getElementById('urlInput').value = crawlState.baseUrl;
+            }
+
+            // Start polling for live updates
+            if (data.status?.status === 'running') {
+                crawlState.isRunning = true;
+                crawlState.isPaused = false;
+                crawlState.startTime = new Date();
+                showProgress();
+                updateCrawlButtons();
+                updateStatus('Reconnected to background crawl — updating...');
+                pollCrawlProgress();
+            } else if (data.status?.status === 'paused') {
+                crawlState.isRunning = true;
+                crawlState.isPaused = true;
+                showProgress();
+                updateCrawlButtons();
+                updateStatus('Crawl is paused — click Resume to continue');
+            } else {
+                // Completed — load full data
+                updateStatus(`Loaded: ${data.status?.urls_crawled || 0} URLs`);
+                // Fetch full crawl data
+                const statusResp = await fetch('/api/crawl_status');
+                const statusData = await statusResp.json();
+                if (statusData.urls) {
+                    statusData.urls.forEach(url => addUrlToTable(url));
+                }
+                crawlState.links = statusData.links || [];
+                crawlState.issues = statusData.issues || [];
+                crawlState.stats = statusData.stats || {};
+                updateStatsDisplay();
+                updateFilterCounts();
+                updateStatusCodesTable();
+            }
+        } else {
+            updateStatus('Failed to reconnect: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Reconnect error:', error);
+        updateStatus('Error reconnecting to crawl');
+    }
 }
