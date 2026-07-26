@@ -1600,7 +1600,7 @@ def export_data():
         return jsonify({'success': False, 'error': str(e)})
 
 def recover_crashed_crawls():
-    """Check for and recover any crashed crawls on startup"""
+    """Auto-resume any crawls that were running when server shut down"""
     try:
         from src.crawl_db import get_crashed_crawls, set_crawl_status, fix_stopped_to_completed
 
@@ -1611,12 +1611,35 @@ def recover_crashed_crawls():
 
         if crashed:
             print("\n" + "=" * 60)
-            print("CRASH RECOVERY")
+            print("CRASH RECOVERY — Auto-resuming active crawls")
             print("=" * 60)
+            recovered_count = 0
             for crawl in crashed:
-                set_crawl_status(crawl['id'], 'failed')
-                print(f"Found crashed crawl: {crawl['base_url']} (ID: {crawl['id']})")
-                print(f"  → Marked as failed. User can resume from dashboard.")
+                try:
+                    crawler = WebCrawler()
+                    success, message = crawler.resume_from_database(
+                        crawl['id'],
+                        user_id=crawl.get('user_id'),
+                        session_id=crawl.get('session_id')
+                    )
+                    if success:
+                        recovered_key = f"recovered_{crawl['id']}"
+                        with instances_lock:
+                            crawler_instances[recovered_key] = {
+                                'crawler': crawler,
+                                'settings': None,
+                                'last_accessed': datetime.now()
+                            }
+                        recovered_count += 1
+                        print(f"  Resumed: {crawl['base_url']} (ID: {crawl['id']}) - {message}")
+                    else:
+                        set_crawl_status(crawl['id'], 'failed')
+                        print(f"  Failed to resume: {crawl['base_url']} (ID: {crawl['id']}) - {message}")
+                except Exception as e:
+                    set_crawl_status(crawl['id'], 'failed')
+                    print(f"  Error resuming: {crawl['base_url']} (ID: {crawl['id']}) - {e}")
+
+            print(f"\n  Recovered {recovered_count}/{len(crashed)} crawls")
             print("=" * 60 + "\n")
     except Exception as e:
         print(f"Error during crash recovery: {e}")
