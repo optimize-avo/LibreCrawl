@@ -128,6 +128,37 @@ async function initializeApp() {
         }
     }
 
+    // Check for reconnect_crawl_id URL parameter (deep-link reconnection from dashboard)
+    const urlParams = new URLSearchParams(window.location.search);
+    const reconnectCrawlId = urlParams.get('reconnect_crawl_id');
+    if (reconnectCrawlId) {
+        // Remove the parameter from the URL without triggering a reload
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        updateStatus('Reconnecting to crawl...');
+
+        try {
+            const response = await fetch('/api/my_active_crawls');
+            const data = await response.json();
+
+            if (data.success && data.crawls && data.crawls.length > 0) {
+                // Find the specific crawl by ID
+                const crawl = data.crawls.find(c => String(c.id) === reconnectCrawlId);
+                if (crawl) {
+                    activeCrawlReconnectId = parseInt(reconnectCrawlId);
+                    await reconnectToCrawl();
+                    return;
+                }
+            }
+
+            // Crawl not found — show error
+            updateStatus('Crawl not found — it may have completed or been deleted');
+        } catch (error) {
+            console.error('Error reconnecting to crawl:', error);
+            updateStatus('Error reconnecting to crawl');
+        }
+    }
+
     // Check for active background crawls
     checkActiveCrawls();
 
