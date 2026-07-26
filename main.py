@@ -54,6 +54,15 @@ if not os.environ.get('SECRET_KEY'):
 # Enable compression for all responses
 Compress(app)
 
+# Prevent browser from caching HTML responses — without this the browser
+# uses heuristic caching and serves stale index.html / login.html forever.
+@app.after_request
+def add_no_cache_header(response):
+    if response.content_type and 'text/html' in response.content_type:
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+    return response
+
 # Initialize database on startup
 init_db()
 
@@ -701,7 +710,15 @@ def index():
 @login_required
 def dashboard():
     """Crawl history dashboard"""
-    return render_template('dashboard.html')
+    user = get_user_by_id(session.get('user_id'))
+    return render_template('dashboard.html', user=user)
+
+@app.route('/settings')
+@login_required
+def settings_page():
+    """Standalone settings page"""
+    user = get_user_by_id(session.get('user_id'))
+    return render_template('settings.html', user=user)
 
 @app.route('/compare')
 @login_required
@@ -1075,6 +1092,23 @@ def list_crawls():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/my_active_crawls')
+@login_required
+def my_active_crawls():
+    """Get active (running/paused) crawls for the current user"""
+    try:
+        user_id = session.get('user_id')
+        from src.crawl_db import get_user_active_crawls
+
+        crawls = get_user_active_crawls(user_id)
+
+        return jsonify({
+            'success': True,
+            'crawls': crawls
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'crawls': []})
+
 @app.route('/api/crawls/history')
 @login_required
 def crawl_history():
@@ -1091,6 +1125,83 @@ def crawl_history():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/crawls/<int:crawl_id>/reconnect', methods=['POST'])
+@login_required
+def reconnect_crawl(crawl_id):
+    """Reconnect to an active crawl — bind it to the current session"""
+    try:
+        user_id = session.get('user_id')
+        from src.crawl_db import get_crawl_by_id
+
+        # Verify crawl exists and is active
+        crawl_info = get_crawl_by_id(crawl_id)
+        if not crawl_info:
+            return jsonify({'success': False, 'error': 'Crawl not found'}), 404
+
+        if crawl_info.get('status') not in ('running', 'paused'):
+            return jsonify({'success': False, 'error': f'Crawl is {crawl_info.get("status")}, cannot reconnect'}), 400
+
+        # Check if crawler instance already exists in memory (any session)
+        with instances_lock:
+            for sid, instance_data in crawler_instances.items():
+                crawler = instance_data['crawler']
+                if crawler.crawl_id == crawl_id:
+                    # Found in-memory instance — bind to current session
+                    session_id = session.get('session_id')
+                    if not session_id:
+                        session['session_id'] = str(uuid.uuid4())
+                        session_id = session['session_id']
+
+                    # Move to current session if not already there
+                    if sid != session_id:
+                        instance_data['last_accessed'] = datetime.now()
+                        crawler_instances[session_id] = instance_data
+                        print(f"Rebound crawl {crawl_id} from session {sid} to {session_id}")
+
+                    instance_data['last_accessed'] = datetime.now()
+
+                    # Load existing data for initial response
+                    status_data = crawler.get_status()
+                    return jsonify({
+                        'success': True,
+                        'message': 'Reconnected to active crawl',
+                        'status': crawler_info_to_response(crawl_info, status_data)
+                    })
+
+        # Not in memory — resume from database
+        crawler = get_or_create_crawler()
+        success, message = crawler.resume_from_database(crawl_id, user_id=user_id)
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message,
+                'status': crawler.get_status()
+            })
+        else:
+            return jsonify({'success': False, 'error': message}), 400
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def crawler_info_to_response(crawl_info, status_data=None):
+    """Format crawl info for reconnect response"""
+    response = {
+        'crawl_id': crawl_info.get('id'),
+        'base_url': crawl_info.get('base_url'),
+        'base_domain': crawl_info.get('base_domain'),
+        'status': crawl_info.get('status'),
+        'urls_crawled': status_data.get('stats', {}).get('crawled', 0) if status_data else 0,
+        'urls_queued': status_data.get('stats', {}).get('discovered', 0) if status_data else 0,
+        'progress_percent': 0,
+    }
+    discovered = response['urls_queued'] or 1
+    crawled = response['urls_crawled'] or 0
+    response['progress_percent'] = min(100, round((crawled / discovered) * 100)) if discovered > 0 else 0
+    return response
+
 
 @app.route('/api/crawls/compare')
 @login_required
@@ -1184,83 +1295,6 @@ def get_crawl(crawl_id):
             'links': links,
             'issues': issues
         })
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/crawls/<int:crawl_id>/load', methods=['POST'])
-@login_required
-def load_crawl_into_session(crawl_id):
-    """Load a historical crawl into the current session"""
-    try:
-        user_id = session.get('user_id')
-        from src.crawl_db import get_crawl_by_id, load_crawled_urls, load_crawl_links, load_crawl_issues
-
-        # Get crawl metadata
-        crawl = get_crawl_by_id(crawl_id)
-        if not crawl:
-            return jsonify({'success': False, 'error': 'Crawl not found'}), 404
-
-        # Check ownership
-        if user_id and crawl.get('user_id') != user_id:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
-        # Get current crawler instance
-        crawler = get_or_create_crawler()
-
-        # Stop any running crawl
-        if crawler.is_running:
-            crawler.stop_crawl()
-
-        # Load all data from database
-        urls = load_crawled_urls(crawl_id)
-        links = load_crawl_links(crawl_id)
-        issues = load_crawl_issues(crawl_id)
-
-        # Inject into current crawler instance
-        with crawler.results_lock:
-            crawler.crawl_results = urls
-            crawler.stats['crawled'] = len(urls)
-            crawler.stats['discovered'] = len(urls)
-            crawler.base_url = crawl['base_url']
-            crawler.base_domain = crawl['base_domain']
-
-        # Load links into link manager
-        if crawler.link_manager:
-            crawler.link_manager.all_links = links
-            # Rebuild links_set
-            crawler.link_manager.links_set.clear()
-            for link in links:
-                link_key = f"{link['source_url']}|{link['target_url']}"
-                crawler.link_manager.links_set.add(link_key)
-
-        # Load issues into issue detector
-        if crawler.issue_detector:
-            crawler.issue_detector.detected_issues = issues
-
-        # Rebuild per-user memory tracker for loaded data
-        crawler.user_memory.reset()
-        crawler._demo_limit_reached = False
-        for url_data in urls:
-            crawler.user_memory.track_url(url_data)
-        if links:
-            crawler.user_memory.track_links(links)
-        if issues:
-            crawler.user_memory.track_issues(issues)
-
-        # Set Flask session flag for force full refresh
-        session['force_full_refresh'] = True
-
-        return jsonify({
-            'success': True,
-            'message': f'Loaded {len(urls)} URLs, {len(links)} links, {len(issues)} issues',
-            'urls_count': len(urls),
-            'links_count': len(links),
-            'issues_count': len(issues),
-            'should_refresh_ui': True
-        })
-
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1568,7 +1602,10 @@ def export_data():
 def recover_crashed_crawls():
     """Check for and recover any crashed crawls on startup"""
     try:
-        from src.crawl_db import get_crashed_crawls, set_crawl_status
+        from src.crawl_db import get_crashed_crawls, set_crawl_status, fix_stopped_to_completed
+
+        # Fix old crawls affected by the stopped-vs-completed bug
+        fix_stopped_to_completed()
 
         crashed = get_crashed_crawls()
 
@@ -1627,12 +1664,14 @@ def main():
     # Start cleanup thread for old crawler instances
     start_cleanup_thread()
 
+    port = int(os.environ.get('PORT', 5001))
+
     print("=" * 60)
     print("LibreCrawl - SEO Spider")
     print("=" * 60)
-    print(f"\n🚀 Server starting on http://0.0.0.0:5000")
-    print(f"🌐 Access from browser: http://localhost:5000")
-    print(f"📱 Access from network: http://<your-ip>:5000")
+    print(f"\n🚀 Server starting on http://0.0.0.0:{port}")
+    print(f"🌐 Access from browser: http://localhost:{port}")
+    print(f"📱 Access from network: http://<your-ip>:{port}")
     print(f"\n✨ Multi-tenancy enabled - each browser session is isolated")
     print(f"💾 Settings stored in browser localStorage")
     print(f"\nPress Ctrl+C to stop the server\n")
@@ -1641,16 +1680,16 @@ def main():
     # Open browser in a separate thread after short delay
     def open_browser():
         time.sleep(1.5)  # Wait for Flask to start
-        webbrowser.open('http://localhost:5000')
+        webbrowser.open(f'http://localhost:{port}')
 
     browser_thread = threading.Thread(target=open_browser, daemon=True)
     browser_thread.start()
 
     # Run Flask server with Waitress (production-grade WSGI server)
     from waitress import serve
-    print("Starting LibreCrawl on http://localhost:5001")
+    print(f"Starting LibreCrawl on http://localhost:{port}")
     print("Using Waitress WSGI server with multi-threading support")
-    serve(app, host='127.0.0.1', port=5001, threads=8)
+    serve(app, host='0.0.0.0', port=port, threads=8)
 
 if __name__ == '__main__':
     main()
