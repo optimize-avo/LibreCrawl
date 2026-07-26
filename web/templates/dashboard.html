@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard — AVO Crawl</title>
+    <title>History — AVO Crawl</title>
     <link rel="stylesheet" href="/static/css/tw.css">
+    <link rel="stylesheet" href="/static/css/components.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -14,13 +15,13 @@
             min-height: 100vh;
             margin: 0;
         }
-        .app-shell { display: flex; min-height: 100vh; }
+        .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
         .main-content {
             flex: 1;
             min-width: 0;
             display: flex;
             gap: 0;
-            min-height: 100vh;
+            min-height: 0;
         }
 
         /* Domain Sidebar */
@@ -102,10 +103,14 @@
             background: var(--card);
             color: var(--ink);
         }
-        .status-badge.status-completed { color: var(--success); border-color: var(--success-border); }
-        .status-badge.status-running   { color: var(--primary); border-color: var(--border-hairline); }
-        .status-badge.status-paused    { color: var(--warning); border-color: var(--warning-border); }
-        .status-badge.status-failed    { color: var(--error); border-color: var(--error-border); }
+        .status-badge.status-completed    { color: var(--success); border-color: var(--success-border); }
+        .status-badge.status-running      { color: var(--primary); border-color: var(--border-hairline); }
+        .status-badge.status-paused       { color: var(--warning); border-color: var(--warning-border); }
+        .status-badge.status-failed       { color: var(--error); border-color: var(--error-border); }
+        .status-badge.status-stopped      { color: var(--muted-fg); border-color: var(--border-hairline); opacity: 0.7; }
+        .status-badge.status-idle         { color: var(--muted-fg); border-color: var(--border-hairline); opacity: 0.5; }
+        .status-badge.status-archived     { color: var(--muted-fg); border-color: var(--border-hairline); }
+        .status-badge.status-demo_stopped { color: var(--warning); border-color: var(--warning-border); }
 
         /* Crawl Cards */
         .crawl-card {
@@ -199,12 +204,21 @@
             width: 16px;
             height: 16px;
         }
+
+        /* Active Crawls Animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
     </style>
 </head>
 <body>
     <div class="app-shell">
-        {% include 'partials/_rail.html' %}
+        {% include 'partials/_navbar.html' %}
         <div class="main-content">
+            <!-- Active Crawl Section -->
+            <div id="activeCrawlsSection" style="display:none; padding: 16px 20px;"></div>
+
             <!-- Domain Sidebar -->
             <div id="domainSidebar">
                 <div class="sidebar-header">Domains</div>
@@ -222,5 +236,13 @@
     </div>
 
     <script src="/static/js/dashboard.js"></script>
+    <script>
+        async function logout() {
+            try {
+                await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            } catch (e) { /* ignore */ }
+            window.location.href = '/login';
+        }
+    </script>
 </body>
 </html>
