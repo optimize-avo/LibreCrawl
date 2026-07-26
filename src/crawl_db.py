@@ -627,6 +627,41 @@ def get_crashed_crawls():
         print(f"Error finding crashed crawls: {e}")
         return []
 
+def get_user_active_crawls(user_id):
+    """Get crawls that are currently running or paused for a user"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, base_url, base_domain, status, started_at,
+                       urls_discovered, max_depth_reached
+                FROM crawls
+                WHERE user_id = ? AND status IN ('running', 'paused')
+                ORDER BY started_at DESC
+            ''', (user_id,))
+
+            crawls = []
+            for row in cursor.fetchall():
+                crawl = dict(row)
+                # Get crawled count from crawled_urls table
+                cursor.execute('''
+                    SELECT COUNT(*) FROM crawled_urls WHERE crawl_id = ?
+                ''', (crawl['id'],))
+                crawl['urls_crawled'] = cursor.fetchone()[0]
+
+                # Calculate progress
+                discovered = crawl.get('urls_discovered') or 1
+                crawled = crawl.get('urls_crawled') or 0
+                crawl['progress_percent'] = min(100, round((crawled / discovered) * 100)) if discovered > 0 else 0
+
+                crawls.append(crawl)
+
+            return crawls
+
+    except Exception as e:
+        print(f"Error finding active crawls: {e}")
+        return []
+
 def cleanup_old_crawls(days=90):
     """Delete crawls older than specified days (optional maintenance)"""
     try:
