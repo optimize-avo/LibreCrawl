@@ -285,7 +285,11 @@ def get_session_settings():
         return crawler_instances[session_id]['settings']
 
 def cleanup_old_instances():
-    """Remove crawler instances that haven't been accessed in 1 hour"""
+    """Remove in-memory crawler instances that haven't been accessed in 1 hour.
+
+    Crawls continue running even after the in-memory instance is removed.
+    Data is persisted to DB and can be resumed later.
+    """
     timeout = timedelta(hours=1)
     now = datetime.now()
 
@@ -296,16 +300,22 @@ def cleanup_old_instances():
                 sessions_to_remove.append(session_id)
 
         for session_id in sessions_to_remove:
-            print(f"Cleaning up crawler instance for session: {session_id}")
-            # Stop any running crawls
-            try:
-                crawler_instances[session_id]['crawler'].stop_crawl()
-            except:
-                pass
+            instance = crawler_instances[session_id]
+            crawler = instance['crawler']
+            # Only remove if the crawl is NOT currently running
+            if crawler.is_running:
+                # Skip — crawl is active, keep it in memory
+                print(f"Keeping active crawl in memory: session {session_id} (crawl {crawler.crawl_id})")
+                continue
+
+            print(f"Cleaning up idle crawler instance for session: {session_id}")
             del crawler_instances[session_id]
 
         if sessions_to_remove:
-            print(f"Cleaned up {len(sessions_to_remove)} inactive crawler instances")
+            active_kept = sum(1 for s in sessions_to_remove
+                            if crawler_instances.get(s, {}).get('crawler', WebCrawler()).is_running)
+            removed = len(sessions_to_remove) - active_kept
+            print(f"Cleaned up {removed} inactive crawler instances ({active_kept} active crawls kept)")
 
 def start_cleanup_thread():
     """Start background thread to cleanup old instances"""
