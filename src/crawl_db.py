@@ -662,6 +662,34 @@ def get_user_active_crawls(user_id):
         print(f"Error finding active crawls: {e}")
         return []
 
+def fix_stopped_to_completed():
+    """Fix old crawls that show 'stopped' but were actually completed naturally.
+
+    Before the _natural_finish fix, session timeouts would call stop_crawl()
+    during post-processing, overwriting 'completed' with 'stopped'. This
+    migration corrects those records on startup.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE crawls
+                SET status = 'completed'
+                WHERE status = 'stopped'
+                AND id IN (
+                    SELECT crawl_id FROM crawl_links
+                    GROUP BY crawl_id
+                    HAVING COUNT(*) > 0
+                )
+            ''')
+            fixed = cursor.rowcount
+            if fixed > 0:
+                print(f"Migration: fixed {fixed} crawls from 'stopped' → 'completed'")
+            return fixed
+    except Exception as e:
+        print(f"Error fixing stopped crawls: {e}")
+        return 0
+
 def cleanup_old_crawls(days=90):
     """Delete crawls older than specified days (optional maintenance)"""
     try:
