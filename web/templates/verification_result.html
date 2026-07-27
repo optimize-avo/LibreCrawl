@@ -3,119 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Verification - LibreCrawl</title>
+    <title>Email verification — LibreCrawl</title>
+    <link rel="stylesheet" href="/static/css/tw.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            color: var(--ink);
         }
-
         .container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 500px;
+            background: var(--bg-glass);
+            backdrop-filter: var(--blur-glass);
+            -webkit-backdrop-filter: var(--blur-glass);
+            border: 1px solid var(--border-hairline);
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
             width: 100%;
-            padding: 40px;
+            max-width: 420px;
+            padding: 40px 32px;
             text-align: center;
         }
-
         .icon {
-            font-size: 64px;
-            margin-bottom: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+            font-weight: 700;
         }
-
         .icon.success {
-            color: #10b981;
+            background: var(--success-bg);
+            color: var(--success);
+            border: 1px solid var(--success-border);
         }
-
         .icon.error {
-            color: #ef4444;
+            background: var(--error-bg);
+            color: var(--error);
+            border: 1px solid var(--error-border);
         }
-
         h1 {
-            font-size: 28px;
-            margin-bottom: 15px;
-            color: #1f2937;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.01em;
         }
-
         .message {
-            font-size: 16px;
-            color: #6b7280;
-            margin-bottom: 30px;
-            line-height: 1.6;
+            color: var(--fg-muted);
+            font-size: 13px;
+            margin-bottom: 20px;
+            line-height: 1.5;
         }
-
         .button {
             display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 40px;
-            border-radius: 8px;
+            padding: 10px 18px;
+            background: var(--primary);
+            color: var(--primary-fg);
+            border-radius: 6px;
             text-decoration: none;
+            font-size: 13px;
             font-weight: 600;
-            transition: transform 0.2s, box-shadow 0.2s;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
+            transition: background 0.15s;
         }
-
-        .button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        .button:hover { background: var(--primary-hover); }
+        .button.secondary {
+            background: var(--card);
+            color: var(--ink);
+            border: 1px solid var(--border-hairline);
         }
-
+        .button.secondary:hover { background: var(--muted); }
         .auto-redirect {
-            margin-top: 20px;
-            font-size: 14px;
-            color: #9ca3af;
+            margin-top: 16px;
+            color: var(--fg-muted);
+            font-size: 12px;
         }
-
         .spinner {
             display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #d1d5db;
-            border-top-color: #667eea;
+            width: 10px;
+            height: 10px;
+            border: 1.5px solid var(--border-hairline);
+            border-top-color: var(--primary);
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            margin-left: 6px;
             vertical-align: middle;
-            margin-left: 8px;
+            animation: spin 0.8s linear infinite;
         }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
-<body>
+<body class="canvas-ambient">
     <div class="container">
         {% if success %}
         <div class="icon success">✓</div>
-        <h1>Email Verified!</h1>
+        <h1>Email Verified</h1>
         <p class="message">{{ message }}</p>
         {% if redirect_url %}
         <a href="{{ redirect_url }}" class="button">Go to {{ 'Workshop' if app_source == 'workshop' else 'LibreCrawl' }}</a>
         <p class="auto-redirect">Redirecting automatically in <span id="countdown">5</span> seconds<span class="spinner"></span></p>
         {% else %}
-        <a href="{{ url_for('login_page') }}" class="button">Go to Login</a>
+        <a href="{{ url_for('login_page') }}" class="button secondary">Go to Login</a>
         {% endif %}
         {% else %}
         <div class="icon error">✗</div>
         <h1>Verification Failed</h1>
         <p class="message">{{ message }}</p>
-        <a href="{{ url_for('login_page') }}" class="button">Go to Login</a>
+        <a href="{{ url_for('login_page') }}" class="button secondary">Go to Login</a>
         {% endif %}
     </div>
 

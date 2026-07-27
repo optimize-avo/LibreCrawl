@@ -314,3 +314,32 @@ LibreCrawl supports multiple concurrent users with isolated sessions:
 ## License
 
 MIT License - see LICENSE file for details.
+
+## UI redesign v2 (design tokens)
+
+LibreCrawl's visual design uses a token-driven system inspired by [optimize-dashboard](https://github.com/anomalyco/optimize-dashboard). The dark neutral palette (`#0f0f0f` canvas, `#0b0b0b` rail, teal `#00c2b8` accent) and signature effects (glass cards, animated teal border-glow, ambient background) all source from a single design-tokens file.
+
+### File map
+
+- `web/static/css/tokens.css` — design tokens (colors, spacing, type) — **single source of truth**
+- `web/static/css/tw-input.css` — Tailwind 4 input (`@import "tailwindcss"; @import "./tokens.css"; @import "./components.css";`)
+- `web/static/css/components.css` — signature-effect utilities (`.glass`, `.canvas-ambient`, `.glow-primary`, `.rail`, `.nav-row`, `.lc-table`, `.pill`, `.progress-track`...)
+- `web/static/css/tw.css` — Tailwind compiled output, gitignored
+- `web/static/css/index-overrides.css` — override sheet for the main crawler UI; loads after `styles.css` and re-paints legacy surfaces with tokens
+- `web/static/css/styles.css` — legacy cascade, still referenced from `index.html`
+- `web/static/fonts/` — self-hosted Inter woff2 (SIL OFL 1.1, see `LICENSE-inter.md`)
+
+### Rebuilding CSS
+
+```bash
+npm run build:css     # one-shot
+npm run watch:css     # watch during development
+```
+
+`start-librecrawl.sh` rebuilds CSS automatically before launching the Flask app.
+
+### Adding a new color
+
+1. Add the variable to `web/static/css/tokens.css`.
+2. (Optional) expose it to Tailwind via `@theme` in `tw-input.css` if you need a `bg-*` / `text-*` utility.
+3. Reference via `var(--your-token)` everywhere. Do not write literal hex/rgb/hsl in templates or other CSS files.

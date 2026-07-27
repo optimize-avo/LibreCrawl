@@ -1,0 +1,46 @@
+<aside class="rail">
+  <div class="px-4 py-4 flex items-center gap-2 border-b border-border-line">
+    <a href="/" class="flex items-center gap-2 text-ink no-underline">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"></path>
+      </svg>
+      <span class="rail-wordmark-text text-[15px] font-semibold tracking-tight">LibreCrawl</span>
+    </a>
+  </div>
+
+  <nav class="flex-1 px-2 py-3" aria-label="Primary">
+    <ul class="space-y-1 list-none m-0 p-0">
+      <li>
+        <a href="/" class="nav-row"
+           aria-current="{{ 'page' if request and request.path == '/' else 'false' }}">
+          <span class="rail-label">Crawl</span>
+        </a>
+      </li>
+      <li>
+        <a href="/dashboard" class="nav-row"
+           aria-current="{{ 'page' if request and request.path.startswith('/dashboard') else 'false' }}">
+          <span class="rail-label">Dashboard</span>
+        </a>
+      </li>
+      <li>
+        <a href="/settings" class="nav-row"
+           aria-current="{{ 'page' if request and request.path.startswith('/settings') else 'false' }}">
+          <span class="rail-label">Settings</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="px-3 py-3 border-t border-border-line flex items-center gap-2">
+    <div class="size-7 rounded-full bg-panel grid place-items-center text-[11px] font-medium text-ink">
+      {{ (user.username[:1] if user and user.username else 'L') | upper }}
+    </div>
+    <div class="rail-label text-[12px] text-fg-secondary truncate flex-1">
+      {{ user.username if user and user.username else 'Guest' }}
+    </div>
+    <button type="button" onclick="logout()" class="rail-label text-[11px] text-fg-muted hover:text-ink bg-transparent border-0 cursor-pointer">
+      Sign out
+    </button>
+  </div>
+</aside>

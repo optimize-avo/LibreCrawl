@@ -1,0 +1,53 @@
+<header class="px-6 py-3 border-b border-border-hairline glass">
+  <div class="flex items-center gap-3">
+    <label for="urlInput" class="text-[12px] text-fg-muted shrink-0">URL to crawl</label>
+    <input
+      type="url"
+      id="urlInput"
+      class="flex-1 bg-card border border-border-functional rounded-md px-3 py-2 text-[13px] text-ink placeholder:text-fg-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring"
+      placeholder="https://example.com"
+      onkeypress="handleUrlKeypress(event)"
+      autocomplete="off"
+      spellcheck="false"
+    >
+
+    <button id="startBtn" class="glow-primary inline-flex items-center gap-1.5 bg-primary text-primary-fg px-3 py-2 rounded-md text-[13px] font-medium hover:bg-primary-hover active:bg-primary-active disabled:opacity-50 disabled:cursor-not-allowed" onclick="toggleCrawl()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      Start
+    </button>
+    <button id="stopBtn" class="inline-flex items-center gap-1.5 bg-card text-error border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed" onclick="stopCrawl()" disabled>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/></svg>
+      Stop
+    </button>
+    <button id="clearBtn" class="inline-flex items-center gap-1.5 bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted" onclick="clearCrawlData()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
+      Clear
+    </button>
+
+    <div class="relative">
+      <button class="inline-flex items-center gap-1.5 bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted export-dropdown-btn" onclick="toggleExportMenu()">
+        Export
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="export-dropdown-menu hidden absolute right-0 mt-1 min-w-[200px] bg-popover border border-border-hairline rounded-md shadow-lg py-1 z-50" id="exportDropdownMenu">
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('all')">Export All Data</div>
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('overview')">Export: Overview</div>
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('internal')">Export: Internal URLs</div>
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('external')">Export: External URLs</div>
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('links')">Export: Links</div>
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('issues')">Export: Issues</div>
+        <div class="export-dropdown-divider h-px bg-border-hairline my-1"></div>
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('all_csv')">Export All (CSV)</div>
+        <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('all_json')">Export All (JSON)</div>
+      </div>
+    </div>
+
+    <button id="saveCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed" onclick="openSaveModal()" disabled>Save</button>
+    <button id="loadCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted" onclick="openLoadModal()">Load</button>
+  </div>
+
+  <div id="progressContainer" class="hidden mt-3 flex items-center gap-3">
+    <div class="progress-track flex-1"><div id="progressFill" class="progress-fill" style="width:0%"></div></div>
+    <span id="progressText" class="text-[12px] text-fg-muted shrink-0">Initializing...</span>
+  </div>
+</header>

@@ -616,15 +616,25 @@ function updateCrawlButtons() {
 }
 
 function showProgress() {
-    document.getElementById('progressContainer').style.display = 'flex';
+    const container = document.getElementById('progressContainer');
+    const fill = document.getElementById('progressFill');
+    container.style.display = 'flex';
+    fill.classList.add('active'); // pulse animation while running
 }
 
 function hideProgress() {
-    document.getElementById('progressContainer').style.display = 'none';
+    const container = document.getElementById('progressContainer');
+    const fill = document.getElementById('progressFill');
+    container.style.display = 'none';
+    fill.classList.remove('active');
 }
 
 function updateProgress(percentage) {
-    document.getElementById('progressFill').style.width = percentage + '%';
+    const fill = document.getElementById('progressFill');
+    fill.style.width = percentage + '%';
+    // Keep .active class on while a crawl is in progress so the pulse animation runs.
+    // showProgress() sets it on, this keeps it on, hideProgress() removes it.
+    if (!fill.classList.contains('active')) fill.classList.add('active');
 }
 
 function updateStatus(message) {
@@ -925,11 +935,15 @@ function updateIssuesTable(issues) {
         else if (issue.type === 'info') infoCount++;
     });
 
-    // Update filter counts
-    document.getElementById('issues-all-count').textContent = `(${issues.length})`;
-    document.getElementById('issues-error-count').textContent = `(${errorCount})`;
-    document.getElementById('issues-warning-count').textContent = `(${warningCount})`;
-    document.getElementById('issues-info-count').textContent = `(${infoCount})`;
+    // Update filter counts in dropdown options
+    const issuesFilterSelect = document.getElementById('issuesFilterSelect');
+    if (issuesFilterSelect) {
+        const options = issuesFilterSelect.options;
+        options[0].text = `All Issues (${issues.length})`;
+        options[1].text = `Errors (${errorCount})`;
+        options[2].text = `Warnings (${warningCount})`;
+        options[3].text = `Info (${infoCount})`;
+    }
 
     // Show/hide empty state
     if (issues.length === 0) {
@@ -1045,13 +1059,16 @@ function addRowToTable(tableBodyId, rowData) {
 }
 
 // Tab Management
-function switchTab(tabName) {
+function switchTab(tabName, btn) {
     // Remove active class from all tabs and panes
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
 
-    // Add active class to selected tab and pane
-    event.target.classList.add('active');
+    // Add active class to selected tab and pane.
+    // Accept the clicked button explicitly (passed via `this` from inline onclick)
+    // because `window.event` is undefined outside the dispatch chain.
+    const tabBtn = btn || (typeof event !== 'undefined' && event && event.target) || document.querySelector(`.tab-btn[onclick*="switchTab('${tabName}')"]`);
+    if (tabBtn) tabBtn.classList.add('active');
     document.getElementById(tabName + '-tab').classList.add('active');
 
     // Load pending links data if switching to Links tab
@@ -1108,46 +1125,11 @@ function filterIssues(filterType) {
     // Store the active filter
     crawlState.filters.issueFilter = filterType;
 
-    // Update active button state and colors
-    document.querySelectorAll('#issues-tab .filter-item').forEach(btn => {
-        btn.classList.remove('active');
-        const filter = btn.getAttribute('data-filter');
-
-        if (filter === filterType) {
-            btn.classList.add('active');
-            // Set active state colors
-            if (filter === 'all') {
-                btn.style.background = '#374151';
-                btn.style.borderColor = '#4b5563';
-                btn.style.color = 'white';
-            } else if (filter === 'error') {
-                btn.style.background = 'rgba(239, 68, 68, 0.2)';
-                btn.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-            } else if (filter === 'warning') {
-                btn.style.background = 'rgba(245, 158, 11, 0.2)';
-                btn.style.borderColor = 'rgba(245, 158, 11, 0.5)';
-            } else if (filter === 'info') {
-                btn.style.background = 'rgba(59, 130, 246, 0.2)';
-                btn.style.borderColor = 'rgba(59, 130, 246, 0.5)';
-            }
-        } else {
-            // Reset inactive state colors
-            if (filter === 'all') {
-                btn.style.background = 'transparent';
-                btn.style.borderColor = '#4b5563';
-                btn.style.color = '#9ca3af';
-            } else if (filter === 'error') {
-                btn.style.background = 'rgba(239, 68, 68, 0.1)';
-                btn.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-            } else if (filter === 'warning') {
-                btn.style.background = 'rgba(245, 158, 11, 0.1)';
-                btn.style.borderColor = 'rgba(245, 158, 11, 0.3)';
-            } else if (filter === 'info') {
-                btn.style.background = 'rgba(59, 130, 246, 0.1)';
-                btn.style.borderColor = 'rgba(59, 130, 246, 0.3)';
-            }
-        }
-    });
+    // Update dropdown selection
+    const select = document.getElementById('issuesFilterSelect');
+    if (select) {
+        select.value = filterType;
+    }
 
     // Filter issues data and update virtual scroller
     if (window.currentIssues && virtualScrollers.issues) {
@@ -1162,11 +1144,14 @@ function filterIssues(filterType) {
 }
 
 // Filter Management
-function toggleFilter(filterType) {
+function toggleFilter(filterType, btn) {
     const filterItems = document.querySelectorAll('.filter-item');
     filterItems.forEach(item => item.classList.remove('active'));
 
-    event.currentTarget.classList.add('active');
+    // Accept clicked button explicitly (passed via `this` from inline onclick)
+    // because `window.event` is undefined outside the dispatch chain.
+    const clicked = btn || (typeof event !== 'undefined' && event && (event.currentTarget || event.target));
+    if (clicked) clicked.classList.add('active');
     crawlState.filters.active = filterType;
 
     // Apply filter to tables
@@ -1529,17 +1514,22 @@ async function loadUserInfo() {
 
         if (data.success && data.user) {
             const user = data.user;
-            const userInfoElement = document.getElementById('userInfo');
+            const profileInitial = document.getElementById('profileInitial');
+            const profileUsername = document.getElementById('profileUsername');
+            const profileTier = document.getElementById('profileTier');
 
             if (user.tier === 'guest') {
                 // Show crawls remaining for guests
                 const remaining = user.crawls_remaining;
-                userInfoElement.textContent = `Guest (${remaining}/3 crawls remaining)`;
-                userInfoElement.style.color = remaining === 0 ? '#dc2626' : '#6b7280';
+                const displayText = remaining === 0 ? 'Guest (limit reached)' : `Guest (${remaining}/3 crawls remaining)`;
+                profileInitial.textContent = 'G';
+                profileUsername.textContent = displayText;
+                profileTier.textContent = '';
             } else {
                 // Show username and tier for registered users
-                userInfoElement.textContent = `${user.username} (${user.tier})`;
-                userInfoElement.style.color = '#6b7280';
+                profileInitial.textContent = user.username.charAt(0).toUpperCase();
+                profileUsername.textContent = user.username;
+                profileTier.textContent = user.tier;
             }
         }
     } catch (error) {
@@ -1559,7 +1549,19 @@ document.addEventListener('click', function(event) {
     if (dropdown && !dropdown.contains(event.target)) {
         menu.classList.remove('show');
     }
+
+    // Close profile dropdown when clicking outside
+    const profileDropdown = document.getElementById('profileDropdown');
+    const profileMenu = document.getElementById('profileDropdownMenu');
+    if (profileDropdown && !profileDropdown.contains(event.target)) {
+        if (profileMenu) profileMenu.classList.remove('open');
+    }
 });
+
+function toggleProfileMenu() {
+    const menu = document.getElementById('profileDropdownMenu');
+    menu.classList.toggle('open');
+}
 
 async function exportData(tab = 'all') {
     try {
@@ -1987,246 +1989,130 @@ function getScoreClass(score) {
     return 'score-poor';
 }
 
-// Save/Load Crawl Functions
-async function saveCrawl() {
+// Save/Load Crawl Functions (DB-backed modals)
+async function openSaveModal() {
+    const modal = document.createElement('div');
+    modal.id = 'saveModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;';
+
+    const domain = crawlState.baseUrl ? new URL(crawlState.baseUrl).hostname : 'crawl';
+
+    modal.innerHTML = `
+        <div style="background:var(--card);border:1px solid var(--border-hairline);border-radius:12px;padding:24px;width:400px;max-width:90vw;">
+            <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--ink);">Save Crawl</h3>
+            <label style="display:block;font-size:12px;color:var(--fg-muted);margin-bottom:6px;">Crawl Name</label>
+            <input type="text" id="saveCrawlName" value="${domain}"
+                style="width:100%;background:var(--panel);border:1px solid var(--border-hairline);border-radius:6px;padding:8px 12px;font-size:13px;color:var(--ink);outline:none;box-sizing:border-box;"
+                placeholder="e.g. After fixing meta tags">
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+                <button onclick="document.getElementById('saveModal').remove()"
+                    style="padding:6px 14px;background:var(--panel-2);color:var(--ink);border:1px solid var(--border-hairline);border-radius:6px;font-size:13px;cursor:pointer;">Cancel</button>
+                <button onclick="confirmSaveCrawl()"
+                    style="padding:6px 14px;background:var(--primary);color:var(--primary-fg);border:1px solid var(--primary);border-radius:6px;font-size:13px;cursor:pointer;">Save</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    document.getElementById('saveCrawlName').focus();
+    document.getElementById('saveCrawlName').select();
+}
+
+async function confirmSaveCrawl() {
+    const name = document.getElementById('saveCrawlName').value.trim();
+    if (!name) return;
+
     try {
-        if (crawlState.stats.crawled === 0) {
-            showNotification('No crawl data to save', 'error');
-            return;
+        const statusResponse = await fetch('/api/crawl_status');
+        const statusData = await statusResponse.json();
+        const crawlId = statusData.crawl_id;
+
+        if (crawlId) {
+            await fetch(`/api/crawls/${crawlId}/save-name`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ crawl_name: name })
+            });
         }
 
-        // Get current crawl data from backend or use local state
-        let urls = crawlState.urls;
-        let links = crawlState.links;
-        let issues = crawlState.issues;
-        let stats = crawlState.stats;
-
-        // Try to get fresh data from backend if available
-        // Always fetch WITHOUT incremental params to get COMPLETE data
-        try {
-            const status = await fetch('/api/crawl_status');
-            const crawlData = await status.json();
-            // Use backend data if it has URLs, otherwise fall back to local state
-            if (crawlData.urls && crawlData.urls.length > 0) {
-                urls = crawlData.urls;
-                links = crawlData.links || links;
-                issues = crawlData.issues || issues;
-                // Update stats to include latest PageSpeed results if available
-                if (crawlData.stats) {
-                    stats = crawlData.stats;
-                }
-            } else if (crawlState.urls && crawlState.urls.length > 0) {
-                // Fallback to local state if backend has no URLs
-                console.log('Backend returned no URLs, using local state');
-            }
-        } catch (e) {
-            console.log('Using local state for save:', e);
-        }
-
-        // Add metadata
-        const saveData = {
-            timestamp: new Date().toISOString(),
-            baseUrl: crawlState.baseUrl,
-            stats: stats,
-            urls: urls,
-            links: links,
-            issues: issues,
-            version: '1.1'
-        };
-
-        // Create and download the file
-        const blob = new Blob([JSON.stringify(saveData, null, 2)], { type: 'application/json' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-
-        // Generate filename with domain and timestamp
-        const domain = crawlState.baseUrl ? new URL(crawlState.baseUrl).hostname : 'crawl';
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        a.download = `librecrawl_${domain}_${timestamp}.json`;
-
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-
-        showNotification('Crawl saved successfully', 'success');
-
+        document.getElementById('saveModal').remove();
+        showNotification('Crawl saved to database', 'success');
     } catch (error) {
         console.error('Save error:', error);
         showNotification('Failed to save crawl', 'error');
     }
 }
 
-function loadCrawl() {
-    // Create file input
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.json';
-    fileInput.style.display = 'none';
+async function openLoadModal() {
+    const modal = document.createElement('div');
+    modal.id = 'loadModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;';
 
-    fileInput.addEventListener('change', async function(event) {
-        const file = event.target.files[0];
-        if (!file) return;
+    modal.innerHTML = `
+        <div style="background:var(--card);border:1px solid var(--border-hairline);border-radius:12px;padding:24px;width:500px;max-width:90vw;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+            <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--ink);">Load Crawl</h3>
+            <div id="loadModalContent" style="flex:1;overflow-y:auto;color:var(--fg-muted);font-size:13px;">Loading...</div>
+            <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+                <button onclick="document.getElementById('loadModal').remove()"
+                    style="padding:6px 14px;background:var(--panel-2);color:var(--ink);border:1px solid var(--border-hairline);border-radius:6px;font-size:13px;cursor:pointer;">Close</button>
+            </div>
+        </div>
+    `;
 
-        try {
-            const text = await file.text();
-            const saveData = JSON.parse(text);
+    document.body.appendChild(modal);
 
-            // Validate save data
-            if (!saveData.version || !saveData.urls || !saveData.stats) {
-                showNotification('Invalid crawl file format', 'error');
-                return;
-            }
+    try {
+        const response = await fetch('/api/crawls/history');
+        const data = await response.json();
+        const container = document.getElementById('loadModalContent');
 
-            // Clear current data
-            clearAllTables();
-            resetStats();
-
-            // Load the data
-            crawlState.baseUrl = saveData.baseUrl;
-            crawlState.stats = saveData.stats;
-            crawlState.urls = [];
-            crawlState.links = saveData.links || [];
-            crawlState.issues = saveData.issues || [];
-
-            // Update UI
-            document.getElementById('urlInput').value = saveData.baseUrl || '';
-            updateStatsDisplay();
-
-            // Populate tables with loaded data
-            if (saveData.urls && saveData.urls.length > 0) {
-                console.log(`Loading ${saveData.urls.length} URLs...`);
-
-                // Clear crawlState.urls first to avoid duplicate check issues
-                crawlState.urls = [];
-
-                // Add URLs to tables (addUrlToTable will handle adding to crawlState.urls)
-                saveData.urls.forEach(url => {
-                    // Debug: check if url has is_internal flag
-                    if (url.is_internal === undefined) {
-                        console.warn('URL missing is_internal flag:', url.url);
-                        // Try to determine is_internal based on domain
-                        if (crawlState.baseUrl) {
-                            try {
-                                const urlDomain = new URL(url.url).hostname.replace('www.', '');
-                                const baseDomain = new URL(crawlState.baseUrl).hostname.replace('www.', '');
-                                url.is_internal = urlDomain === baseDomain;
-                            } catch (e) {
-                                url.is_internal = false;
-                            }
-                        }
-                    }
-                    addUrlToTable(url);
-                });
-
-                console.log(`Added ${crawlState.urls.length} URLs to state`);
-                console.log('Sample URL data:', crawlState.urls[0]);
-            }
-
-            // Load links data
-            if (saveData.links && saveData.links.length > 0) {
-                console.log(`Loading ${saveData.links.length} links...`);
-                crawlState.pendingLinks = saveData.links;
-                // If Links tab is currently active, load them immediately
-                if (isLinksTabActive()) {
-                    updateLinksTable(saveData.links);
-                }
-            }
-
-            // Load issues data if present - filter them based on current exclusion settings
-            if (saveData.issues && saveData.issues.length > 0) {
-                console.log(`Loading ${saveData.issues.length} issues...`);
-
-                // Filter issues using current exclusion patterns
-                try {
-                    const filterResponse = await fetch('/api/filter_issues', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ issues: saveData.issues })
-                    });
-                    const filterData = await filterResponse.json();
-
-                    const filteredIssues = filterData.success ? filterData.issues : saveData.issues;
-                    console.log(`Filtered to ${filteredIssues.length} issues after exclusions`);
-
-                    crawlState.issues = filteredIssues;
-                    crawlState.pendingIssues = filteredIssues;
-
-                    // If Issues tab is currently active, load them immediately
-                    if (isIssuesTabActive()) {
-                        updateIssuesTable(filteredIssues);
-                    } else {
-                        // Update the badge count even if tab is not active
-                        const issuesTabButton = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.textContent.includes('Issues'));
-                        if (issuesTabButton) {
-                            const errorCount = filteredIssues.filter(i => i.type === 'error').length;
-                            const warningCount = filteredIssues.filter(i => i.type === 'warning').length;
-                            let badgeColor = '#3b82f6';
-                            if (errorCount > 0) badgeColor = '#ef4444';
-                            else if (warningCount > 0) badgeColor = '#f59e0b';
-                            issuesTabButton.innerHTML = `Issues <span style="background: ${badgeColor}; color: white; padding: 2px 6px; border-radius: 12px; font-size: 12px;">${filteredIssues.length}</span>`;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to filter issues:', error);
-                    // Fall back to unfiltered issues if filtering fails
-                    crawlState.issues = saveData.issues;
-                    crawlState.pendingIssues = saveData.issues;
-                    if (isIssuesTabActive()) {
-                        updateIssuesTable(saveData.issues);
-                    }
-                }
-            }
-
-            // Update all secondary data
-            updateFilterCounts();
-            updateStatusCodesTable();
-            updateCrawlButtons();
-
-            // Display PageSpeed results if available
-            if (saveData.stats && saveData.stats.pagespeed_results) {
-                console.log(`Loading ${saveData.stats.pagespeed_results.length} PageSpeed results...`);
-                displayPageSpeedResults(saveData.stats.pagespeed_results);
-            }
-
-            // Force refresh of all tables
-            setTimeout(() => {
-                console.log('Force refreshing tables...');
-                const overviewCount = document.getElementById('overviewTableBody').children.length;
-                const internalCount = document.getElementById('internalTableBody').children.length;
-                const externalCount = document.getElementById('externalTableBody').children.length;
-                console.log(`Table counts - Overview: ${overviewCount}, Internal: ${internalCount}, External: ${externalCount}`);
-            }, 100);
-
-            // Update visualization if it exists and has been initialized
-            if (typeof window.updateVisualizationFromLoadedData === 'function') {
-                window.updateVisualizationFromLoadedData(saveData.urls, saveData.links);
-            }
-
-            // Notify plugins of loaded data
-            if (window.LibreCrawlPlugin && window.LibreCrawlPlugin.loader) {
-                window.LibreCrawlPlugin.loader.notifyDataUpdate({
-                    urls: crawlState.urls,
-                    links: crawlState.links,
-                    issues: crawlState.issues,
-                    stats: crawlState.stats
-                });
-            }
-
-            showNotification(`Crawl loaded: ${saveData.stats.crawled} URLs from ${new Date(saveData.timestamp).toLocaleDateString()}`, 'success');
-
-        } catch (error) {
-            console.error('Load error:', error);
-            showNotification('Failed to load crawl file', 'error');
+        if (!data.success || !data.domains || data.domains.length === 0) {
+            container.innerHTML = '<p style="text-align:center;padding:20px;">No saved crawls found.</p>';
+            return;
         }
-    });
 
-    // Trigger file selection
-    document.body.appendChild(fileInput);
-    fileInput.click();
-    document.body.removeChild(fileInput);
+        let html = '';
+        data.domains.forEach(domain => {
+            html += `<div style="margin-bottom:16px;">`;
+            html += `<div style="font-weight:600;color:var(--ink);margin-bottom:8px;">${domain.domain} <span style="font-weight:400;color:var(--fg-muted);">(${domain.crawl_count})</span></div>`;
+            domain.crawls.forEach(crawl => {
+                const date = new Date(crawl.started_at).toLocaleString();
+                const issues = crawl.issues_count || 0;
+                html += `
+                    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border-hairline);border-radius:6px;margin-bottom:4px;cursor:pointer;" onclick="loadFromModal(${crawl.id})" onmouseover="this.style.background='var(--muted)'" onmouseout="this.style.background='transparent'">
+                        <span style="flex:1;font-size:13px;color:var(--ink);">${date}</span>
+                        <span style="font-size:12px;color:var(--fg-muted);">${crawl.urls_crawled || 0} URLs</span>
+                        <span style="font-size:12px;color:${issues > 0 ? 'var(--error)' : 'var(--success)'};">${issues} issues</span>
+                        <span style="font-size:11px;color:var(--fg-muted);">${crawl.status}</span>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+        });
+        container.innerHTML = html;
+
+    } catch (error) {
+        document.getElementById('loadModalContent').innerHTML = '<p style="color:var(--error);">Error loading history</p>';
+    }
+}
+
+async function loadFromModal(crawlId) {
+    if (!confirm('Load this crawl? Current data will be lost.')) return;
+
+    try {
+        const response = await fetch(`/api/crawls/${crawlId}/load`, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('loadModal').remove();
+            sessionStorage.setItem('force_ui_refresh', 'true');
+            window.location.href = '/';
+        } else {
+            alert('Error: ' + (data.error || data.message));
+        }
+    } catch (error) {
+        alert('Error loading crawl: ' + error.message);
+    }
 }
 
 // ========================================
@@ -2360,4 +2246,198 @@ function renderIssueRow(row, issue, index) {
         <td>${issue.issue}</td>
         <td style="word-break: break-word;" title="${issue.details}">${issue.details}</td>
     `;
+}
+// =====================================================================
+// Sortable tables — click a <th data-sort="key"> to sort that tab ASC/DESC.
+// sortTable(tab, key) sorts the virtual scroller's current dataset by
+// the named field and re-renders. Repeat clicks flip direction.
+// =====================================================================
+
+// Per-tab sort state: { tab: { key: string|null, dir: 'asc'|'desc' } }
+const tableSortState = {};
+
+// Map of <th data-sort> keys to fields on the underlying data objects.
+// Falls back to .url / .title / .status etc. — same keys the existing
+// table renderers already use, so sort matches what the user sees.
+const SORT_FIELD_MAP = {
+    // Generic URL-table columns
+    address:    u => (u.url || '').toLowerCase(),
+    status:     u => parseInt(u.status_code || u.status || 0, 10) || 0,
+    'content-type': u => (u.content_type || '').toLowerCase(),
+    size:       u => parseInt(u.size || 0, 10) || 0,
+    title:      u => (u.title || '').toLowerCase(),
+    'meta-desc': u => (u.meta_description || '').toLowerCase(),
+    h1:         u => (u.h1 || '').toLowerCase(),
+    words:      u => parseInt(u.word_count || u.words || 0, 10) || 0,
+    response:   u => parseInt(u.response_time || 0, 10) || 0,
+    analytics:  u => (u.analytics ? 1 : 0),
+    'og-tags':  u => Object.keys(u.og_tags || {}).length,
+    'json-ld':  u => Object.keys(u.json_ld || u.jsonld || {}).length,
+    links:      u => (u.internal_links || 0) + (u.external_links || 0),
+    images:     u => parseInt(u.images_count || u.images || 0, 10) || 0,
+    js:         u => parseInt(u.js_count || u.js || 0, 10) || 0,
+    // Issues table
+    type:       i => (i.type || '').toLowerCase(),
+    category:   i => (i.category || '').toLowerCase(),
+    issue:      i => (i.issue || '').toLowerCase(),
+    url:        i => (i.url || '').toLowerCase(),
+    details:    i => (i.details || '').toLowerCase(),
+    // Status codes (uses {code, count})
+    code:       s => parseInt(s.code || s.status || 0, 10) || 0,
+    count:      s => parseInt(s.count || 0, 10) || 0
+};
+
+function sortTable(tab, key) {
+    const scroller = virtualScrollers[tab];
+    if (!scroller) return;
+
+    const data = scroller.data || [];
+    const fieldFn = SORT_FIELD_MAP[key];
+    if (!fieldFn) return; // unknown key — ignore
+
+    // Flip direction if already sorting by this key
+    const prev = tableSortState[tab] || { key: null, dir: 'asc' };
+    let dir = 'asc';
+    if (prev.key === key && prev.dir === 'asc') dir = 'desc';
+    tableSortState[tab] = { key, dir };
+
+    // Compare: try numeric first, then string
+    const sorted = [...data].sort((a, b) => {
+        const va = fieldFn(a);
+        const vb = fieldFn(b);
+        let cmp;
+        if (typeof va === 'number' && typeof vb === 'number') {
+            cmp = va - vb;
+        } else {
+            cmp = String(va).localeCompare(String(vb));
+        }
+        return dir === 'asc' ? cmp : -cmp;
+    });
+
+    scroller.setData(sorted);
+
+    // Update header indicator (▲ asc / ▼ desc / none)
+    const table = document.getElementById(tab + 'Table') || document.getElementById(tab + '-table');
+    if (table) {
+        table.querySelectorAll('th[data-sort]').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (th.dataset.sort === key) {
+                th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        });
+    }
+}
+
+// =====================================================================
+// Sortable tables — status-codes + issues variants.
+// Both render through their own updateXxxTable functions (not virtual
+// scrollers), so they need dedicated sort handlers.
+// =====================================================================
+
+const statusCodesSortState = { key: null, dir: 'asc' };
+const issuesSortState = { key: null, dir: 'asc' };
+
+// Status codes table: sort then re-render via updateStatusCodesTable
+function sortStatusCodesTable(key) {
+    let dir = 'asc';
+    if (statusCodesSortState.key === key && statusCodesSortState.dir === 'asc') dir = 'desc';
+    statusCodesSortState.key = key;
+    statusCodesSortState.dir = dir;
+
+    const get = k => (crawlState.statusCodes || []).slice().sort((a, b) => {
+        let va, vb;
+        if (k === 'code')        { va = parseInt(a.code || 0, 10); vb = parseInt(b.code || 0, 10); }
+        else if (k === 'count')  { va = parseInt(a.count || 0, 10); vb = parseInt(b.count || 0, 10); }
+        else                     { va = String(a.status || a.label || '').toLowerCase(); vb = String(b.status || b.label || '').toLowerCase(); cmp_outer: { const cmp = va.localeCompare(vb); return dir === 'asc' ? cmp : -cmp; } }
+        const cmp = va - vb;
+        return dir === 'asc' ? cmp : -cmp;
+    });
+
+    // For status-codes, the existing updateStatusCodesTable ignores input order
+    // (it builds counts from crawlState.urls), so we sort the table body directly
+    // after rendering.
+    if (typeof updateStatusCodesTable === 'function') {
+        updateStatusCodesTable();
+    }
+    const tbody = document.getElementById('statusCodesTableBody');
+    if (tbody) {
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const sorted = rows.slice().sort((a, b) => {
+            const av = a.cells[key === 'code' ? 0 : key === 'status' ? 1 : 2]?.textContent || '';
+            const bv = b.cells[key === 'code' ? 0 : key === 'status' ? 1 : 2]?.textContent || '';
+            const cmp = (key === 'code' || key === 'count')
+                ? parseInt(av, 10) - parseInt(bv, 10)
+                : av.toLowerCase().localeCompare(bv.toLowerCase());
+            return dir === 'asc' ? cmp : -cmp;
+        });
+        sorted.forEach(r => tbody.appendChild(r));
+    }
+
+    // Indicator
+    const ths = document.querySelectorAll('#statusCodesTable th[data-sort]');
+    ths.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === key) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+}
+
+// Issues table: same approach — sort <tr>s in the DOM
+function sortIssuesTable(key) {
+    let dir = 'asc';
+    if (issuesSortState.key === key && issuesSortState.dir === 'asc') dir = 'desc';
+    issuesSortState.key = key;
+    issuesSortState.dir = dir;
+
+    const tbody = document.getElementById('issuesTableBody') || document.querySelector('#issues-tab tbody');
+    if (!tbody) return;
+    const colIdx = { url: 0, type: 1, category: 2, issue: 3, details: 4 }[key];
+    if (colIdx === undefined) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const sorted = rows.slice().sort((a, b) => {
+        const av = a.cells[colIdx]?.textContent || '';
+        const bv = b.cells[colIdx]?.textContent || '';
+        const cmp = av.toLowerCase().localeCompare(bv.toLowerCase());
+        return dir === 'asc' ? cmp : -cmp;
+    });
+    sorted.forEach(r => tbody.appendChild(r));
+
+    const ths = document.querySelectorAll('#issuesTable th[data-sort]');
+    ths.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === key) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+}
+
+// Links tables (internalLinks, externalLinks) — sort <tr>s in the DOM.
+const linksSortState = {};
+function sortLinksTable(tabId, key) {
+    let dir = 'asc';
+    const stateKey = tabId;
+    const prev = linksSortState[stateKey] || { key: null, dir: 'asc' };
+    if (prev.key === key && prev.dir === 'asc') dir = 'desc';
+    linksSortState[stateKey] = { key, dir };
+
+    const tbody = document.getElementById(tabId + 'TableBody');
+    if (!tbody) return;
+    const colIdx = { url: 0, target: 1, status: 2, anchor: 3, domain: 3, placement: 4 }[key];
+    if (colIdx === undefined) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const sorted = rows.slice().sort((a, b) => {
+        const av = a.cells[colIdx]?.textContent || '';
+        const bv = b.cells[colIdx]?.textContent || '';
+        // Status is numeric; rest is string
+        const cmp = (key === 'status')
+            ? (parseInt(av, 10) || 0) - (parseInt(bv, 10) || 0)
+            : av.toLowerCase().localeCompare(bv.toLowerCase());
+        return dir === 'asc' ? cmp : -cmp;
+    });
+    sorted.forEach(r => tbody.appendChild(r));
+
+    const ths = document.querySelectorAll(`#${tabId}Table th[data-sort]`);
+    ths.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === key) th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
 }

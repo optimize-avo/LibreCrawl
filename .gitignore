@@ -5,3 +5,5 @@ users.db
 data/*.db
 
 .env
+node_modules/
+web/static/css/tw.css
