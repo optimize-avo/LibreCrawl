@@ -2,6 +2,29 @@
 // Dashboard - Domain Sidebar + Crawl Detail
 // ========================================
 
+// Dashboard Loading Overlay Utilities
+function showDashboardLoading(text, step) {
+    const overlay = document.getElementById('loadingOverlay');
+    const textEl = document.getElementById('loadingOverlayText');
+    const stepEl = document.getElementById('loadingOverlayStep');
+    if (!overlay) return;
+    overlay.style.display = 'flex';
+    if (textEl) textEl.textContent = text || 'Loading...';
+    if (stepEl) stepEl.textContent = step || '';
+}
+
+function updateDashboardLoading(text, step) {
+    const textEl = document.getElementById('loadingOverlayText');
+    const stepEl = document.getElementById('loadingOverlayStep');
+    if (textEl && text) textEl.textContent = text;
+    if (stepEl) stepEl.textContent = step || '';
+}
+
+function hideDashboardLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
 // Dashboard state
 let selectedDomain = null;
 let compareMode = false;
@@ -120,7 +143,8 @@ function renderActiveCrawls(crawls) {
 function reconnectFromDashboard(crawlId) {
     sessionStorage.setItem('force_ui_refresh', 'true');
     sessionStorage.setItem('reconnect_crawl_id', crawlId);
-    window.location.href = '/';
+    sessionStorage.setItem('current_crawl_id', crawlId);
+    window.location.href = `/?crawl_id=${crawlId}`;
 }
 
 function renderDomainSidebar() {
@@ -286,16 +310,30 @@ async function openCrawl(crawlId, status, urlsCrawled) {
 
     if (!confirm('Load this crawl? Current data will be lost.')) return;
 
+    // Show loading overlay on dashboard
+    showDashboardLoading('Loading crawl data...', `Preparing crawl #${crawlId}`);
+
+    // Use /load for completed crawls (view-only), /resume for interrupted crawls
+    const isCompleted = status === 'completed';
+    const endpoint = isCompleted
+        ? `/api/crawls/${crawlId}/load`
+        : `/api/crawls/${crawlId}/resume`;
+
     try {
-        const response = await fetch(`/api/crawls/${crawlId}/resume`, { method: 'POST' });
+        updateDashboardLoading('Loading crawl data...', 'Fetching from database...');
+        const response = await fetch(endpoint, { method: 'POST' });
         const data = await response.json();
         if (data.success) {
+            updateDashboardLoading('Redirecting...', 'Crawl loaded successfully');
             sessionStorage.setItem('force_ui_refresh', 'true');
-            window.location.href = '/';
+            sessionStorage.setItem('current_crawl_id', crawlId);
+            window.location.href = `/?crawl_id=${crawlId}`;
         } else {
+            hideDashboardLoading();
             alert('Error: ' + (data.error || data.message || 'Unknown error'));
         }
     } catch (error) {
+        hideDashboardLoading();
         alert('Error opening crawl: ' + error.message);
     }
 }

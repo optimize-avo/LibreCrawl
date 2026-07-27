@@ -1,0 +1,130 @@
+<div class="section">
+  <h2>Cyberpunk Progress Bar — Updated Mockup</h2>
+  <p class="subtitle">Glow reduced + showing current URL being crawled</p>
+</div>
+
+<div class="section">
+  <h3>Progress Bar @ 45% crawl</h3>
+  <div style="background: #0a0a0f; border-radius: 12px; padding: 24px 32px; border: 1px solid rgba(0, 240, 255, 0.1);">
+    <!-- Topbar mock -->
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+      <span style="font-size: 12px; color: #7a8ba0; font-family: 'SF Mono', 'Fira Code', monospace;">URL to crawl</span>
+      <input value="https://example.com" readonly style="flex:1; background: #12121a; border: 1px solid #1e2a3a; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #c8d6e5; font-family: 'SF Mono', monospace;">
+      <button style="background: linear-gradient(135deg, #00f0ff, #0080ff); border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #0a0a0f; cursor: pointer;">Start</button>
+    </div>
+
+    <!-- THE CYBERPUNK PROGRESS BAR — REDUCED GLOW -->
+    <div style="position: relative;">
+      <!-- Glow: reduced opacity and blur -->
+      <div style="position: absolute; inset: -2px; background: linear-gradient(90deg, #00f0ff 0%, #8b5cf6 50%, #ff00ff 100%); border-radius: 9999px; filter: blur(6px); opacity: 0.2; animation: glow-pulse 2s ease-in-out infinite;"></div>
+
+      <!-- Track -->
+      <div style="position: relative; height: 5px; background: #12121a; border-radius: 9999px; overflow: hidden; box-shadow: 0 0 4px rgba(0, 240, 255, 0.15);">
+
+        <!-- Fill bar -->
+        <div class="cyber-fill" style="height: 100%; width: 45%; background: linear-gradient(90deg, #00f0ff, #8b5cf6 60%, #ff00ff); border-radius: 9999px; position: relative; box-shadow: 0 0 6px rgba(0, 240, 255, 0.4), 0 0 12px rgba(0, 240, 255, 0.15); transition: width 300ms ease;">
+
+          <!-- Glitch pseudo-elements -->
+          <div class="glitch-layer glitch-cyan" style="position: absolute; inset: 0; background: #00f0ff; border-radius: 9999px; mix-blend-mode: screen; opacity: 0; animation: glitch-cyan 4s infinite;"></div>
+          <div class="glitch-layer glitch-magenta" style="position: absolute; inset: 0; background: #ff00ff; border-radius: 9999px; mix-blend-mode: screen; opacity: 0; animation: glitch-magenta 4s infinite;"></div>
+
+          <!-- Scanline overlay -->
+          <div style="position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0, 0, 0, 0.1) 1px, rgba(0, 0, 0, 0.1) 2px); border-radius: 9999px;"></div>
+        </div>
+      </div>
+
+      <!-- Status text with current URL -->
+      <div style="margin-top: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; color: #00f0ff; font-family: 'SF Mono', monospace; text-shadow: 0 0 4px rgba(0, 240, 255, 0.3); letter-spacing: 0.5px;">Crawling...</span>
+          <span style="font-size: 11px; color: #4a5568; font-family: 'SF Mono', monospace;">(45/120)</span>
+        </div>
+        <div style="font-size: 11px; color: #5a6a7a; font-family: 'SF Mono', monospace; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">
+          <span style="color: #7a8ba0;">→</span> https://example.com/products/wireless-headphones/best-deals-2024
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Progress Bar @ 85% — with active glitch</h3>
+  <div style="background: #0a0a0f; border-radius: 12px; padding: 24px 32px; border: 1px solid rgba(0, 240, 255, 0.1);">
+    <div style="position: relative;">
+      <div style="position: absolute; inset: -2px; background: linear-gradient(90deg, #00f0ff 0%, #8b5cf6 50%, #ff00ff 100%); border-radius: 9999px; filter: blur(6px); opacity: 0.2; animation: glow-pulse 2s ease-in-out infinite;"></div>
+      <div style="position: relative; height: 5px; background: #12121a; border-radius: 9999px; overflow: hidden; box-shadow: 0 0 4px rgba(0, 240, 255, 0.15);">
+        <div class="cyber-fill glitching" style="height: 100%; width: 85%; background: linear-gradient(90deg, #00f0ff, #8b5cf6 60%, #ff00ff); border-radius: 9999px; position: relative; box-shadow: 0 0 6px rgba(0, 240, 255, 0.4), 0 0 12px rgba(0, 240, 255, 0.15);">
+          <div class="glitch-layer glitch-cyan" style="position: absolute; inset: 0; background: #00f0ff; border-radius: 9999px; mix-blend-mode: screen; animation: glitch-cyan-active 0.3s steps(3) infinite;"></div>
+          <div class="glitch-layer glitch-magenta" style="position: absolute; inset: 0; background: #ff00ff; border-radius: 9999px; mix-blend-mode: screen; animation: glitch-magenta-active 0.3s steps(3) infinite;"></div>
+          <div style="position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0, 0, 0, 0.1) 1px, rgba(0, 0, 0, 0.1) 2px); border-radius: 9999px;"></div>
+        </div>
+      </div>
+      <div style="margin-top: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; color: #00f0ff; font-family: 'SF Mono', monospace; text-shadow: 0 0 4px rgba(0, 240, 255, 0.3); letter-spacing: 0.5px;">Crawling...</span>
+          <span style="font-size: 11px; color: #4a5568; font-family: 'SF Mono', monospace;">(102/120)</span>
+        </div>
+        <div style="font-size: 11px; color: #5a6a7a; font-family: 'SF Mono', monospace; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;">
+          <span style="color: #7a8ba0;">→</span> https://example.com/api/v2/users/settings/notifications
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>What Changed</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+    <div style="background: #12121a; border-radius: 8px; padding: 14px; border: 1px solid #1e2a3a;">
+      <h4 style="color: #00f0ff; font-size: 12px; margin-bottom: 6px; font-family: monospace;">✓ Glow Reduced</h4>
+      <p style="font-size: 11px; color: #7a8ba0; line-height: 1.5;">Blur 12px → 6px, opacity 0.4 → 0.2. Subtle ambient light, not a spotlight.</p>
+    </div>
+    <div style="background: #12121a; border-radius: 8px; padding: 14px; border: 1px solid #1e2a3a;">
+      <h4 style="color: #00f0ff; font-size: 12px; margin-bottom: 6px; font-family: monospace;">✓ Current URL</h4>
+      <p style="font-size: 11px; color: #7a8ba0; line-height: 1.5;">Shows "→ URL" below progress text. Truncates with ellipsis if too long.</p>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes glow-pulse {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 0.25; }
+  }
+  @keyframes glitch-cyan {
+    0%, 90%, 100% { opacity: 0; transform: translate(0); clip-path: inset(0); }
+    92% { opacity: 0.7; transform: translate(-3px, 1px); clip-path: inset(20% 0 50% 0); }
+    94% { opacity: 0.5; transform: translate(2px, -1px); clip-path: inset(60% 0 10% 0); }
+    96% { opacity: 0.6; transform: translate(-1px, 2px); clip-path: inset(5% 0 70% 0); }
+    98% { opacity: 0; transform: translate(0); clip-path: inset(0); }
+  }
+  @keyframes glitch-magenta {
+    0%, 90%, 100% { opacity: 0; transform: translate(0); clip-path: inset(0); }
+    91% { opacity: 0.6; transform: translate(3px, -1px); clip-path: inset(40% 0 30% 0); }
+    93% { opacity: 0.5; transform: translate(-2px, 1px); clip-path: inset(10% 0 60% 0); }
+    95% { opacity: 0.7; transform: translate(1px, -2px); clip-path: inset(70% 0 5% 0); }
+    97% { opacity: 0; transform: translate(0); clip-path: inset(0); }
+  }
+  @keyframes glitch-cyan-active {
+    0% { opacity: 0.7; transform: translate(-3px, 1px); clip-path: inset(20% 0 50% 0); }
+    33% { opacity: 0.5; transform: translate(2px, -1px); clip-path: inset(60% 0 10% 0); }
+    66% { opacity: 0.6; transform: translate(-1px, 2px); clip-path: inset(5% 0 70% 0); }
+    100% { opacity: 0.7; transform: translate(-3px, 1px); clip-path: inset(20% 0 50% 0); }
+  }
+  @keyframes glitch-magenta-active {
+    0% { opacity: 0.6; transform: translate(3px, -1px); clip-path: inset(40% 0 30% 0); }
+    33% { opacity: 0.5; transform: translate(-2px, 1px); clip-path: inset(10% 0 60% 0); }
+    66% { opacity: 0.7; transform: translate(1px, -2px); clip-path: inset(70% 0 5% 0); }
+    100% { opacity: 0.6; transform: translate(3px, -1px); clip-path: inset(40% 0 30% 0); }
+  }
+  .glitching {
+    animation: shake 0.15s steps(2) infinite;
+  }
+  @keyframes shake {
+    0% { transform: translate(0); }
+    25% { transform: translate(-1px, 0.5px); }
+    50% { transform: translate(1px, -0.5px); }
+    75% { transform: translate(-0.5px, 1px); }
+    100% { transform: translate(0); }
+  }
+</style>

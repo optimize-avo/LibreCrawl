@@ -587,8 +587,8 @@ def get_resume_data(crawl_id):
     if not crawl:
         return None
 
-    # Only allow resume for paused/failed/running crawls
-    if crawl['status'] not in ['paused', 'failed', 'running']:
+    # Allow loading for paused/failed/running/completed crawls
+    if crawl['status'] not in ['paused', 'failed', 'running', 'completed']:
         return None
 
     return crawl

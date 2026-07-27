@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — AVO Crawl</title>
+    <link rel="stylesheet" href="/static/css/tw.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+            min-height: 100vh;
+            margin: 0;
+        }
+        .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            padding: 32px 40px;
+            max-width: 860px;
+        }
+
+        .page-header { margin-bottom: 28px; }
+        .page-header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+        .page-header p { color: var(--fg-muted); font-size: 13px; margin-top: 4px; }
+
+        /* Tabs */
+        .settings-tabs {
+            display: flex;
+            gap: 2px;
+            border-bottom: 1px solid var(--border-hairline);
+            margin-bottom: 24px;
+            overflow-x: auto;
+        }
+        .settings-tab-btn {
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--fg-muted);
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .settings-tab-btn:hover { color: var(--ink); }
+        .settings-tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        /* Tab content */
+        .settings-tab-content { display: none; }
+        .settings-tab-content.active { display: block; }
+
+        .settings-tab-content h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--ink);
+        }
+
+        /* Form groups */
+        .setting-group {
+            margin-bottom: 20px;
+        }
+        .setting-group > label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--ink);
+            margin-bottom: 6px;
+        }
+        .setting-group input[type="text"],
+        .setting-group input[type="number"],
+        .setting-group input[type="password"],
+        .setting-group input[type="url"],
+        .setting-group select,
+        .setting-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            background: var(--card);
+            border: 1px solid var(--border-hairline);
+            border-radius: 6px;
+            color: var(--ink);
+            transition: border-color 0.15s;
+        }
+        .setting-group input:focus,
+        .setting-group select:focus,
+        .setting-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0, 194, 184, 0.15);
+        }
+        .setting-group textarea { resize: vertical; min-height: 80px; }
+        .setting-help {
+            display: block;
+            font-size: 12px;
+            color: var(--fg-muted);
+            margin-top: 4px;
+        }
+
+        .checkbox-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--ink);
+            cursor: pointer;
+        }
+        .checkbox-label input[type="checkbox"] {
+            accent-color: var(--primary);
+        }
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            font-size: 13px;
+            border: 1px solid var(--border-hairline);
+            border-radius: 6px;
+            background: var(--card);
+            color: var(--ink);
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+            transition: background 0.15s;
+        }
+        .btn:hover { background: var(--muted); }
+        .btn-primary {
+            background: var(--primary);
+            color: var(--primary-fg);
+            border-color: var(--primary);
+        }
+        .btn-primary:hover { background: var(--primary-hover, var(--primary)); }
+
+        .footer-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-hairline);
+        }
+
+        /* Info boxes */
+        .info-box {
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .info-box-blue {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: #93c5fd;
+        }
+        .info-box-yellow {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            color: #fbbf24;
+        }
+        .info-box-purple {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: #c4b5fd;
+        }
+        .info-box code {
+            background: rgba(255,255,255,0.08);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        {% include 'partials/_navbar.html' %}
+        <div class="main-content">
+            <div class="page-header">
+                <h1>Settings</h1>
+                <p>Configure crawler behavior, filters, and export options</p>
+            </div>
+
+            <div class="settings-tabs">
+                <button class="settings-tab-btn active" onclick="switchSettingsTab('crawler')">Crawler</button>
+                <button class="settings-tab-btn" onclick="switchSettingsTab('requests')">Requests</button>
+                <button class="settings-tab-btn" onclick="switchSettingsTab('filters')">Filters</button>
+                <button class="settings-tab-btn" onclick="switchSettingsTab('export')">Export</button>
+                <button class="settings-tab-btn" onclick="switchSettingsTab('javascript')">JavaScript</button>
+                <button class="settings-tab-btn" onclick="switchSettingsTab('issues')">Issue Exclusion</button>
+                <button class="settings-tab-btn" onclick="switchSettingsTab('customcss')">Custom CSS</button>
+                <button class="settings-tab-btn" onclick="switchSettingsTab('advanced')">Advanced</button>
+            </div>
+
+            <!-- Crawler Settings -->
+            <div id="crawler-settings" class="settings-tab-content active">
+                <h3>Crawler Configuration</h3>
+                <div class="setting-group">
+                    <label for="maxDepth">Maximum Crawl Depth</label>
+                    <input type="number" id="maxDepth" value="3" min="1" max="10">
+                    <span class="setting-help">How deep to crawl from the starting URL</span>
+                </div>
+                <div class="setting-group">
+                    <label for="maxUrls">Maximum URLs to Crawl</label>
+                    <input type="number" id="maxUrls" value="5000000" min="1" max="5000000">
+                    <span class="setting-help">Stop crawling after this many URLs</span>
+                </div>
+                <div class="setting-group">
+                    <label for="crawlDelay">Crawl Delay (seconds)</label>
+                    <input type="number" id="crawlDelay" value="1" min="0" max="60" step="0.1">
+                    <span class="setting-help">Delay between requests to be respectful</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="followRedirects" checked>
+                        Follow Redirects
+                    </label>
+                    <span class="setting-help">Follow 3xx redirects automatically</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="crawlExternalLinks">
+                        Crawl External Links
+                    </label>
+                    <span class="setting-help">Include external domains in crawl</span>
+                </div>
+            </div>
+
+            <!-- Request Settings -->
+            <div id="requests-settings" class="settings-tab-content">
+                <h3>HTTP Request Configuration</h3>
+                <div class="setting-group">
+                    <label for="userAgent">User Agent</label>
+                    <input type="text" id="userAgent" value="LibreCrawl/1.0 (Web Crawler)">
+                    <span class="setting-help">User agent string sent with requests</span>
+                </div>
+                <div class="setting-group">
+                    <label for="timeout">Request Timeout (seconds)</label>
+                    <input type="number" id="timeout" value="10" min="1" max="120">
+                    <span class="setting-help">How long to wait for a response</span>
+                </div>
+                <div class="setting-group">
+                    <label for="retries">Retry Attempts</label>
+                    <input type="number" id="retries" value="3" min="0" max="10">
+                    <span class="setting-help">Number of retries for failed requests</span>
+                </div>
+                <div class="setting-group">
+                    <label for="acceptLanguage">Accept Language</label>
+                    <input type="text" id="acceptLanguage" value="en-US,en;q=0.9">
+                    <span class="setting-help">Preferred language for responses</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="respectRobotsTxt" checked>
+                        Respect robots.txt
+                    </label>
+                    <span class="setting-help">Check robots.txt before crawling</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="allowCookies" checked>
+                        Allow Cookies
+                    </label>
+                    <span class="setting-help">Accept and send cookies</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="discoverSitemaps" checked>
+                        Discover Sitemaps
+                    </label>
+                    <span class="setting-help">Automatically find and parse sitemap.xml files (including nested sitemaps)</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enablePageSpeed">
+                        Enable PageSpeed Analysis
+                    </label>
+                    <span class="setting-help">Run Google PageSpeed Insights on homepage and 2 category pages after crawl completes</span>
+                </div>
+                <div class="setting-group">
+                    <label for="googleApiKey">Google PageSpeed API Key</label>
+                    <input type="password" id="googleApiKey" placeholder="Enter your Google PageSpeed Insights API key">
+                    <span class="setting-help">
+                        API key for higher rate limits (25k requests/day vs limited without key).
+                        <a href="https://developers.google.com/speed/docs/insights/v5/get-started" target="_blank" style="color: #8b5cf6;">Get API key here</a>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Filter Settings -->
+            <div id="filters-settings" class="settings-tab-content">
+                <h3>Content Filters</h3>
+                <div class="setting-group">
+                    <label for="includeExtensions">Include File Extensions</label>
+                    <input type="text" id="includeExtensions" value="html,htm,php,asp,aspx,jsp">
+                    <span class="setting-help">Comma-separated list of extensions to crawl</span>
+                </div>
+                <div class="setting-group">
+                    <label for="excludeExtensions">Exclude File Extensions</label>
+                    <input type="text" id="excludeExtensions" value="pdf,doc,docx,zip,exe,dmg">
+                    <span class="setting-help">Comma-separated list of extensions to skip</span>
+                </div>
+                <div class="setting-group">
+                    <label for="includePatterns">Include URL Patterns</label>
+                    <textarea id="includePatterns" rows="3" placeholder="One pattern per line (regex supported)"></textarea>
+                    <span class="setting-help">Only crawl URLs matching these patterns</span>
+                </div>
+                <div class="setting-group">
+                    <label for="excludePatterns">Exclude URL Patterns</label>
+                    <textarea id="excludePatterns" rows="3" placeholder="One pattern per line (regex supported)"></textarea>
+                    <span class="setting-help">Skip URLs matching these patterns</span>
+                </div>
+                <div class="setting-group">
+                    <label for="maxFileSize">Maximum File Size (MB)</label>
+                    <input type="number" id="maxFileSize" value="50" min="1" max="1000">
+                    <span class="setting-help">Skip files larger than this size</span>
+                </div>
+                <h3 style="margin-top: 30px;">Duplication Detection</h3>
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="enableDuplicationCheck" checked>
+                        Enable Duplication Check
+                    </label>
+                    <span class="setting-help">Detect duplicate content across all crawled pages</span>
+                </div>
+                <div class="setting-group">
+                    <label for="duplicationThreshold">Duplication Similarity Threshold</label>
+                    <input type="number" id="duplicationThreshold" value="0.85" min="0" max="1" step="0.05">
+                    <span class="setting-help">Content similarity threshold (0.0-1.0). Higher values = stricter matching. Default: 0.85 (85% similar)</span>
+                </div>
+            </div>
+
+            <!-- Export Settings -->
+            <div id="export-settings" class="settings-tab-content">
+                <h3>Export Configuration</h3>
+                <div class="setting-group">
+                    <label for="exportFormat">Default Export Format</label>
+                    <select id="exportFormat">
+                        <option value="csv">CSV</option>
+                        <option value="xlsx">Excel (XLSX)</option>
+                        <option value="json">JSON</option>
+                        <option value="xml">XML</option>
+                    </select>
+                    <span class="setting-help">Default format for data exports</span>
+                </div>
+                <div class="setting-group">
+                    <label>Export Fields</label>
+                    <div class="checkbox-grid">
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="url" checked> URL</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="status_code" checked> Status Code</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="title" checked> Title</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="meta_description" checked> Meta Description</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="h1" checked> H1 Tags</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="word_count"> Word Count</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="content_type"> Content Type</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="response_time"> Response Time</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="canonical_url"> Canonical URL</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="og_tags"> OpenGraph Tags</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="twitter_tags"> Twitter Cards</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="json_ld"> JSON-LD Data</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="analytics"> Analytics Tracking</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="internal_links"> Internal Links Count</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="external_links"> External Links Count</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="images"> Images Count</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="links_detailed"> Detailed Links Data</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="lang"> Language</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="charset"> Charset</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="viewport"> Viewport</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="robots"> Robots Meta</label>
+                        <label class="checkbox-label"><input type="checkbox" name="exportFields" value="issues_detected"> Issues Detected</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- JavaScript Settings -->
+            <div id="javascript-settings" class="settings-tab-content">
+                <h3>JavaScript Rendering Configuration</h3>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enableJavaScript">
+                        Enable JavaScript Rendering
+                    </label>
+                    <span class="setting-help">Render pages with JavaScript for dynamic content (slower but more accurate)</span>
+                </div>
+                <div class="setting-group" id="jsSettings" style="display: none;">
+                    <label for="jsWaitTime">JavaScript Wait Time (seconds)</label>
+                    <input type="number" id="jsWaitTime" value="3" min="0" max="30" step="0.5">
+                    <span class="setting-help">Time to wait for JavaScript to render after page load</span>
+                </div>
+                <div class="setting-group" id="jsTimeoutGroup" style="display: none;">
+                    <label for="jsTimeout">Page Load Timeout (seconds)</label>
+                    <input type="number" id="jsTimeout" value="30" min="5" max="120">
+                    <span class="setting-help">Maximum time to wait for page to load</span>
+                </div>
+                <div class="setting-group" id="jsBrowserGroup" style="display: none;">
+                    <label for="jsBrowser">Browser Engine</label>
+                    <select id="jsBrowser">
+                        <option value="chromium">Chromium (Recommended)</option>
+                        <option value="firefox">Firefox</option>
+                        <option value="webkit">WebKit (Safari)</option>
+                    </select>
+                    <span class="setting-help">Browser engine for JavaScript rendering</span>
+                </div>
+                <div class="setting-group" id="jsHeadlessGroup" style="display: none;">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="jsHeadless" checked>
+                        Headless Mode
+                    </label>
+                    <span class="setting-help">Run browser without visible window (recommended for performance)</span>
+                </div>
+                <div class="setting-group" id="jsUserAgentGroup" style="display: none;">
+                    <label for="jsUserAgent">JavaScript User Agent</label>
+                    <input type="text" id="jsUserAgent" value="LibreCrawl/1.0 (Web Crawler with JavaScript)">
+                    <span class="setting-help">User agent string for JavaScript-rendered pages</span>
+                </div>
+                <div class="setting-group" id="jsViewportGroup" style="display: none;">
+                    <label>Browser Viewport Size</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="jsViewportWidth" value="1920" min="800" max="4000" placeholder="Width" style="width: 120px;">
+                        <span style="color: var(--fg-muted);">&times;</span>
+                        <input type="number" id="jsViewportHeight" value="1080" min="600" max="3000" placeholder="Height" style="width: 120px;">
+                    </div>
+                    <span class="setting-help">Browser window size for rendering (affects responsive layouts)</span>
+                </div>
+                <div class="setting-group" id="jsConcurrencyGroup" style="display: none;">
+                    <label for="jsMaxConcurrentPages">Max Concurrent Browser Pages</label>
+                    <input type="number" id="jsMaxConcurrentPages" value="3" min="1" max="10">
+                    <span class="setting-help">Number of browser pages for parallel JavaScript rendering (higher = faster but more memory)</span>
+                </div>
+                <div class="setting-group" id="jsWarning" style="display: none;">
+                    <div class="info-box info-box-yellow">
+                        <strong>Performance Impact</strong><br>
+                        JavaScript rendering is significantly slower than HTTP-only crawling. Use for sites with dynamic content or when static crawling produces incomplete results.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Issue Exclusion Settings -->
+            <div id="issues-settings" class="settings-tab-content">
+                <h3>Issue Exclusion Patterns</h3>
+                <p class="setting-help" style="margin-bottom: 16px;">URLs matching these patterns will be excluded from issue detection.</p>
+                <div class="setting-group">
+                    <label for="issueExclusionPatterns">Exclusion Patterns (one per line)</label>
+                    <textarea id="issueExclusionPatterns" rows="20" placeholder="/admin/*&#10;/wp-admin/*&#10;*.json"></textarea>
+                    <span class="setting-help">Use * for wildcards. Examples: /admin/*, *.json, /test/*</span>
+                    <div style="margin-top: 10px;">
+                        <button type="button" class="btn" onclick="resetIssueExclusions()">Reset to Defaults</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom CSS Settings -->
+            <div id="customcss-settings" class="settings-tab-content">
+                <h3>Custom CSS Styling</h3>
+                <p class="setting-help" style="margin-bottom: 16px;">Write custom CSS to personalize the look and feel of the interface. Changes apply immediately after saving.</p>
+                <div class="setting-group">
+                    <label for="customCSS">Custom CSS Code</label>
+                    <textarea id="customCSS" rows="20" placeholder="/* Write your custom CSS here */" style="font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;"></textarea>
+                </div>
+            </div>
+
+            <!-- Advanced Settings -->
+            <div id="advanced-settings" class="settings-tab-content">
+                <h3>Advanced Configuration</h3>
+                <div class="setting-group">
+                    <label for="concurrency">Concurrent Requests</label>
+                    <input type="number" id="concurrency" value="5" min="1" max="50">
+                    <span class="setting-help">Number of simultaneous requests (higher = faster but more resource intensive)</span>
+                </div>
+                <div class="setting-group">
+                    <label for="memoryLimit">Memory Limit (MB)</label>
+                    <input type="number" id="memoryLimit" value="512" min="64" max="4096">
+                    <span class="setting-help">Maximum memory usage for crawl data</span>
+                </div>
+                <div class="setting-group">
+                    <label for="logLevel">Log Level</label>
+                    <select id="logLevel">
+                        <option value="DEBUG">Debug</option>
+                        <option value="INFO" selected>Info</option>
+                        <option value="WARNING">Warning</option>
+                        <option value="ERROR">Error</option>
+                    </select>
+                    <span class="setting-help">Logging verbosity level</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="saveSession">
+                        Save Session Data
+                    </label>
+                    <span class="setting-help">Automatically save crawl data between sessions</span>
+                </div>
+                <div class="setting-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enableProxy">
+                        Enable Proxy
+                    </label>
+                    <span class="setting-help">Route requests through a proxy server</span>
+                </div>
+                <div class="setting-group" id="proxySettings" style="display: none;">
+                    <label for="proxyUrl">Proxy URL</label>
+                    <input type="text" id="proxyUrl" placeholder="http://proxy.example.com:8080">
+                    <span class="setting-help">Proxy server URL with port</span>
+                </div>
+                <div class="setting-group">
+                    <label for="customHeaders">Custom Headers</label>
+                    <textarea id="customHeaders" rows="4" placeholder="Header-Name: Header-Value&#10;Another-Header: Another-Value"></textarea>
+                    <span class="setting-help">Additional HTTP headers to send (one per line)</span>
+                </div>
+            </div>
+
+            <div class="footer-actions">
+                <button class="btn" onclick="resetSettings()">Reset to Defaults</button>
+                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/settings.js"></script>
+    <script>
+        // Override closeSettings to redirect back to previous page or home
+        function closeSettings() {
+            window.history.back();
+        }
+    </script>
+</body>
+</html>

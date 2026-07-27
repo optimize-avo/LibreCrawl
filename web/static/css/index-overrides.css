@@ -30,9 +30,7 @@ body {
     background-clip: initial !important;
     -webkit-text-fill-color: var(--ink) !important;
 }
-.app-title::after {
-    background: var(--primary) !important;
-}
+/* underline removed */
 .header-actions { color: var(--fg-secondary) !important; gap: 8px !important; }
 
 /* URL section */
@@ -42,12 +40,15 @@ body {
     -webkit-backdrop-filter: blur(12px) !important;
     border-bottom: 1px solid var(--border-hairline) !important;
     color: var(--ink) !important;
+    position: relative;
+    z-index: 10;
 }
 .url-container { color: var(--ink) !important; }
 .input-label {
     color: var(--fg-muted) !important;
     font-weight: 500 !important;
     font-size: 12px !important;
+    text-decoration: none !important;
 }
 .input-label::after {
     background: var(--primary) !important;
@@ -63,28 +64,14 @@ body {
 .url-input:focus {
     outline: none !important;
     border-color: var(--primary) !important;
-    box-shadow: 0 0 0 2px var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(0, 194, 184, 0.2), 0 0 8px rgba(0, 194, 184, 0.15) !important;
     background: var(--card) !important;
 }
 .url-input::placeholder { color: var(--fg-muted) !important; }
 
 .control-buttons { gap: 8px !important; }
 
-/* Progress */
-.progress-container { color: var(--fg-muted) !important; }
-.progress-bar {
-    background: var(--panel-2) !important;
-    border-radius: 9999px !important;
-    height: 4px !important;
-}
-.progress-fill {
-    background: var(--primary) !important;
-    width: 0% !important;
-}
-.progress-text {
-    color: var(--fg-muted) !important;
-    font-size: 12px !important;
-}
+/* Progress — cyberpunk overrides (new structure in components.css) */
 
 /* Buttons */
 .btn {
@@ -92,7 +79,7 @@ body {
     color: var(--ink) !important;
     border: 1px solid var(--border-hairline) !important;
     border-radius: 6px !important;
-    padding: 8px 14px !important;
+    padding: 14px 16px !important;
     font-family: var(--font-sans) !important;
     font-size: 13px !important;
     font-weight: 500 !important;
@@ -154,6 +141,62 @@ body {
     height: 1px !important;
     margin: 4px 0 !important;
 }
+
+/* Profile dropdown */
+.profile-dropdown { position: relative !important; }
+.profile-icon-btn {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    background: var(--panel-2, #374151) !important;
+    border: 1px solid var(--border-hairline, #4b5563) !important;
+    color: var(--ink, #e2e8f0) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    display: grid !important;
+    place-items: center !important;
+    transition: all 0.2s !important;
+    padding: 0 !important;
+}
+.profile-icon-btn:hover { background: var(--muted, #4b5563) !important; }
+.profile-dropdown-menu {
+    display: none !important;
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    right: 0 !important;
+    min-width: 160px !important;
+    background: var(--popover, #1f2937) !important;
+    border: 1px solid var(--border-hairline, #4b5563) !important;
+    border-radius: 8px !important;
+    padding: 4px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+    z-index: 200 !important;
+}
+.profile-dropdown-menu.open { display: block !important; }
+.profile-dropdown-header {
+    padding: 8px 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    color: var(--ink) !important;
+}
+.profile-dropdown-divider {
+    height: 1px !important;
+    background: var(--border-hairline, #4b5563) !important;
+    margin: 4px 0 !important;
+}
+.profile-dropdown-item {
+    padding: 8px 12px !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 13px !important;
+    color: var(--ink, #e2e8f0) !important;
+}
+.profile-dropdown-item:hover { background: var(--muted, #4b5563) !important; }
 
 /* Main content + sidebar */
 .main-content {
@@ -333,6 +376,24 @@ body {
 .data-table tbody tr.selected td {
     border-left: 2px solid var(--primary) !important;
     background: var(--surface-active) !important;
+}
+/* Virtual scroller spacer rows — must be completely invisible while still
+   providing scroll height.  The !important overrides the generic td rules
+   that would otherwise paint borders/backgrounds on the spacer cells. */
+.virtual-spacer {
+    height: 0 !important;
+    line-height: 0 !important;
+    overflow: hidden !important;
+}
+.virtual-spacer td {
+    height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    margin: 0 !important;
+    line-height: 0 !important;
+    font-size: 0 !important;
+    background: transparent !important;
+    pointer-events: none !important;
 }
 /* Address column specifically — show full URL, allow wrap. */
 .data-table td:first-child,
@@ -605,6 +666,7 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--muted) !important; }
 ::selection { background: rgba(0, 194, 184, 0.35) !important; color: var(--ink) !important; }
 
-/* Generic a-tag inside content */
-a { color: var(--primary) !important; }
-a:hover { color: var(--primary-hover) !important; }
+/* Generic a-tag inside content — exclude navbar, preserve active state */
+.navbar a:not(.active) { color: unset !important; }
+.content-area a, .tab-content a, .sidebar a { color: var(--primary) !important; }
+.content-area a:hover, .tab-content a:hover, .sidebar a:hover { color: var(--primary-hover) !important; }

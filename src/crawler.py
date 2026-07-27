@@ -112,6 +112,7 @@ class WebCrawler:
         self.is_running = False
         self.is_paused = False
         self.is_running_pagespeed = False
+        self._natural_finish = False  # True when crawl loop exits naturally (not user-stopped)
 
         # Configuration
         self.config = self._get_default_config()
@@ -127,6 +128,9 @@ class WebCrawler:
 
         # Thread reference
         self.crawl_thread = None
+
+        # Current URL being crawled (for UI display)
+        self.current_crawl_url = None
 
         # Robots.txt cache
         self._robots_cache = {}
@@ -310,6 +314,7 @@ class WebCrawler:
 
             # Start crawling in separate thread
             self.is_running = True
+            self._natural_finish = False
             self.crawl_thread = threading.Thread(target=self._crawl_worker)
             self.crawl_thread.start()
 
@@ -383,11 +388,12 @@ class WebCrawler:
         if self.crawl_thread and self.crawl_thread.is_alive():
             self.crawl_thread.join(timeout=5)
 
-        # Save final data to database
+        # Save final data to database — but don't overwrite a natural finish
         if self.db_save_enabled and self.crawl_id:
             self._save_batch_to_db(force=True)
-            from src.crawl_db import set_crawl_status
-            set_crawl_status(self.crawl_id, 'stopped')
+            if not self._natural_finish:
+                from src.crawl_db import set_crawl_status
+                set_crawl_status(self.crawl_id, 'stopped')
 
         # Clean up JavaScript resources if enabled
         if self.js_renderer:
@@ -425,6 +431,67 @@ class WebCrawler:
             set_crawl_status(self.crawl_id, 'running')
 
         return True, "Crawl resumed"
+
+    def load_completed_crawl(self, crawl_id, user_id=None):
+        """Load a completed crawl's results for viewing (view-only, no crawl restart)"""
+        if self.is_running:
+            return False, "Crawl already in progress"
+
+        try:
+            from src.crawl_db import get_resume_data, load_crawled_urls, load_crawl_issues
+
+            # Load crawl metadata
+            crawl_data = get_resume_data(crawl_id)
+
+            if not crawl_data:
+                return False, "Cannot load this crawl - not found"
+
+            if crawl_data['status'] != 'completed':
+                return False, f"Cannot load crawl with status: {crawl_data['status']} (use resume for interrupted crawls)"
+
+            # Verify user owns this crawl (if not guest)
+            if user_id and crawl_data.get('user_id') != user_id:
+                return False, "Unauthorized - you don't own this crawl"
+
+            # Restore basic state
+            self.crawl_id = crawl_id
+            self.base_url = crawl_data['base_url']
+            self.base_domain = crawl_data['base_domain']
+            # Preserve demo keys across config restore
+            demo_mode = self.config.get('demo_mode', False)
+            demo_limit = self.config.get('demo_memory_limit_bytes', 0)
+            self.config = crawl_data.get('config_snapshot', self._get_default_config())
+            if demo_mode:
+                self.config['demo_mode'] = True
+                self.config['demo_memory_limit_bytes'] = demo_limit
+            self.db_save_enabled = True
+
+            # Initialize components
+            self._initialize_components()
+
+            # Load only URLs + issues for viewing (skip heavy links — 3.5M+ records)
+            print(f"Loading completed crawl results for viewing...")
+            self.crawl_results = load_crawled_urls(crawl_id)
+
+            loaded_issues = load_crawl_issues(crawl_id)
+            if loaded_issues:
+                self.issue_detector.detected_issues = loaded_issues
+            print(f"Loaded {len(self.crawl_results)} URLs, {len(loaded_issues)} issues (view-only mode)")
+
+            self.user_memory.reset()
+            self._demo_limit_reached = False
+            self.stats['crawled'] = len(self.crawl_results)
+            self.stats['discovered'] = crawl_data.get('urls_discovered', 0)
+            self.stats['depth'] = crawl_data.get('max_depth_reached', 0)
+            self.stats['start_time'] = time.time()
+
+            return True, f"Loaded {self.stats['crawled']} URLs from completed crawl"
+
+        except Exception as e:
+            print(f"Error loading completed crawl: {e}")
+            import traceback
+            traceback.print_exc()
+            return False, f"Error loading completed crawl: {str(e)}"
 
     def resume_from_database(self, crawl_id, user_id=None, session_id=None):
         """Resume a previously interrupted crawl from database"""
@@ -470,6 +537,7 @@ class WebCrawler:
             print(f"Loading crawled data from database...")
             self.crawl_results = load_crawled_urls(crawl_id)
 
+            # Full resume path for interrupted crawls
             # Mark all crawled URLs as discovered to prevent re-discovery
             for url_data in self.crawl_results:
                 url = url_data.get('url')
@@ -539,13 +607,13 @@ class WebCrawler:
                         self.link_manager.add_url(target_url, link.get('depth', 1))
                         added_count += 1
 
-                print(f"Added {added_count} pending URLs to queue from links")
+            print(f"Added {added_count} pending URLs to queue from links")
 
-                # If still empty, crawl is complete
-                if not self.link_manager.discovered_urls:
-                    print("No pending URLs found - crawl was already complete")
+            # If still empty, crawl is complete
+            if not self.link_manager.discovered_urls:
+                print("No pending URLs found - crawl was already complete")
 
-                self.stats['discovered'] = len(self.link_manager.all_discovered_urls)
+            self.stats['discovered'] = len(self.link_manager.all_discovered_urls)
 
             # Update status to running
             set_crawl_status(crawl_id, 'running')
@@ -555,6 +623,7 @@ class WebCrawler:
 
             # Start crawling
             self.is_running = True
+            self._natural_finish = False
             self.crawl_thread = threading.Thread(target=self._crawl_worker)
             self.crawl_thread.start()
 
@@ -611,7 +680,8 @@ class WebCrawler:
             'memory': self.memory_monitor.get_stats(),
             'memory_data': data_sizes,
             'demo_stopped': self._demo_limit_reached,
-            'demo_mode': self.config.get('demo_mode', False)
+            'demo_mode': self.config.get('demo_mode', False),
+            'current_url': self.current_crawl_url
         }
 
     def _save_batch_to_db(self, force=False):
@@ -766,6 +836,7 @@ class WebCrawler:
 
                         # Submit crawl task immediately - rate limiting happens inside the worker
                         print(f"Submitting task for: {current_url}")
+                        self.current_crawl_url = current_url
                         future = executor.submit(self._crawl_url, current_url, depth)
                         active_futures[future] = current_url
 
@@ -808,17 +879,20 @@ class WebCrawler:
                     if self.config.get('demo_mode') and self.user_memory.total_bytes >= self.config.get('demo_memory_limit_bytes', 0):
                         print(f"DEMO MODE: Per-user memory limit reached ({self.user_memory.total_mb:.0f}MB)")
                         self._demo_limit_reached = True
+                        self._natural_finish = True
                         break
 
                     # Check for completion
                     if self.stats['crawled'] >= self.config['max_urls']:
                         print(f"Reached maximum URLs limit ({self.config['max_urls']})")
+                        self._natural_finish = True
                         break
 
                     # Check if no more work
                     link_stats = self.link_manager.get_stats()
                     if link_stats['pending'] == 0 and len(active_futures) == 0:
                         print("No more URLs to crawl")
+                        self._natural_finish = True
                         break
 
                     # Tiny sleep only to yield CPU
@@ -828,10 +902,13 @@ class WebCrawler:
                     print(f"Error in crawl worker: {e}")
                     time.sleep(1)
 
+        # Clear current URL tracking when crawl worker finishes
+        self.current_crawl_url = None
+
         # Skip post-processing if demo limit was hit — no further memory use
         if not self._demo_limit_reached:
-            # Check if crawl was stopped - if so, skip expensive post-processing
-            if not self.is_running:
+            # Check if crawl was stopped by user (not natural finish) - skip expensive post-processing
+            if not self.is_running and not self._natural_finish:
                 print("Crawl was stopped - skipping post-processing")
                 # Still save data if possible
                 if self.db_save_enabled and self.crawl_id:
@@ -1215,6 +1292,9 @@ class WebCrawler:
                         if self.config.get('delay', 0) > 0:
                             self.rate_limiter.acquire()
 
+                        # Track current URL for UI display
+                        self.current_crawl_url = current_url
+
                         # Create task
                         task = asyncio.create_task(self._crawl_url_with_javascript(current_url, depth))
                         active_tasks.add(task)
@@ -1260,6 +1340,7 @@ class WebCrawler:
                 link_stats = self.link_manager.get_stats()
                 if link_stats['pending'] == 0 and len(active_tasks) == 0:
                     print("No more URLs to crawl")
+                    self._natural_finish = True
                     break
 
                 await asyncio.sleep(0.001)
@@ -1295,6 +1376,7 @@ class WebCrawler:
 
             # Clean up
             await self.js_renderer.cleanup()
+            self.current_crawl_url = None
             self.is_running = False
             print(f"Crawl completed. Discovered: {self.stats['discovered']}, Crawled: {self.stats['crawled']}")
 

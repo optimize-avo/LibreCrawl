@@ -248,11 +248,40 @@ def get_or_create_crawler():
         # Check if crawler exists for this session
         if session_id not in crawler_instances:
             print(f"Creating new crawler instance for session: {session_id}, user: {user_id}, tier: {tier}")
+            crawler = WebCrawler()
             crawler_instances[session_id] = {
-                'crawler': WebCrawler(),
+                'crawler': crawler,
                 'settings': SettingsManager(session_id=session_id, user_id=user_id, tier=tier),  # Per-user settings
                 'last_accessed': datetime.now()
             }
+
+            # AUTO-RESTORE: If session has a current_crawl_id, load that crawl
+            current_crawl_id = session.get('current_crawl_id')
+            if current_crawl_id:
+                try:
+                    from src.crawl_db import get_crawl_by_id
+                    crawl_info = get_crawl_by_id(current_crawl_id)
+                    if crawl_info and crawl_info.get('status') in ('completed', 'paused', 'failed'):
+                        # Load the crawl data
+                        if crawl_info['status'] == 'completed':
+                            success, msg = crawler.load_completed_crawl(current_crawl_id, user_id=user_id)
+                        else:
+                            success, msg = crawler.resume_from_database(current_crawl_id, user_id=user_id, session_id=session_id)
+                        if success:
+                            print(f"Auto-restored crawl {current_crawl_id} on session init: {msg}")
+                        else:
+                            print(f"Failed to auto-restore crawl {current_crawl_id}: {msg}")
+                            session.pop('current_crawl_id', None)
+                    elif crawl_info and crawl_info.get('status') == 'running':
+                        # Crawl was running but server may have restarted - try resume
+                        success, msg = crawler.resume_from_database(current_crawl_id, user_id=user_id, session_id=session_id)
+                        if success:
+                            print(f"Auto-restored running crawl {current_crawl_id}: {msg}")
+                        else:
+                            session.pop('current_crawl_id', None)
+                except Exception as e:
+                    print(f"Error auto-restoring crawl: {e}")
+                    session.pop('current_crawl_id', None)
         else:
             # Update last accessed time
             crawler_instances[session_id]['last_accessed'] = datetime.now()
@@ -845,6 +874,8 @@ def crawl_status():
         filtered_issues = filter_issues_by_exclusion_patterns(issues, exclusion_patterns)
         status_data['issues'] = filtered_issues
 
+    # Include crawl_id in response for frontend URL state
+    status_data['crawl_id'] = getattr(crawler, 'crawl_id', None)
     return jsonify(status_data)
 
 @app.route('/api/visualization_data')
@@ -1309,6 +1340,28 @@ def get_crawl(crawl_id):
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/crawls/<int:crawl_id>/load', methods=['POST'])
+@login_required
+def load_crawl_endpoint(crawl_id):
+    """Load a completed crawl's results for viewing (no crawl restart)"""
+    try:
+        user_id = session.get('user_id')
+
+        # Get crawler for this session
+        crawler = get_or_create_crawler()
+
+        # Load completed crawl results
+        success, message = crawler.load_completed_crawl(crawl_id, user_id=user_id)
+
+        if success:
+            session['current_crawl_id'] = crawl_id
+
+        return jsonify({'success': success, 'message': message})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/crawls/<int:crawl_id>/resume', methods=['POST'])
 @login_required

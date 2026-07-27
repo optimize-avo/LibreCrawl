@@ -41,6 +41,29 @@ let virtualScrollers = {
     issues: null
 };
 
+// Loading Overlay Utilities
+function showLoadingOverlay(text, step) {
+    const overlay = document.getElementById('loadingOverlay');
+    const textEl = document.getElementById('loadingOverlayText');
+    const stepEl = document.getElementById('loadingOverlayStep');
+    if (!overlay) return;
+    overlay.style.display = 'flex';
+    if (textEl) textEl.textContent = text || 'Loading crawl data...';
+    if (stepEl) stepEl.textContent = step || '';
+}
+
+function updateLoadingOverlay(text, step) {
+    const textEl = document.getElementById('loadingOverlayText');
+    const stepEl = document.getElementById('loadingOverlayStep');
+    if (textEl && text) textEl.textContent = text;
+    if (stepEl) stepEl.textContent = step || '';
+}
+
+function hideLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
 // Initialize application
 document.addEventListener('DOMContentLoaded', async function() {
     await initializeApp();
@@ -65,8 +88,11 @@ async function initializeApp() {
     // Check if we just opened a crawl from dashboard
     if (sessionStorage.getItem('force_ui_refresh') === 'true') {
         sessionStorage.removeItem('force_ui_refresh');
+        showLoadingOverlay('Loading crawl data...', 'Fetching results from database');
         try {
+            updateLoadingOverlay('Loading crawl data...', 'Fetching results from database');
             const response = await fetch('/api/crawl_status');
+            updateLoadingOverlay('Processing results...', 'Parsing URLs, links, and issues');
             const data = await response.json();
 
             clearAllTables();
@@ -84,6 +110,8 @@ async function initializeApp() {
 
             if (data.urls && data.urls.length > 0) {
                 data.urls.forEach(url => addUrlToTable(url));
+                // Sort loaded results by hierarchy
+                applyHierarchySortToAll();
             }
             if (data.links && data.links.length > 0) {
                 crawlState.pendingLinks = data.links;
@@ -111,6 +139,12 @@ async function initializeApp() {
             updateStatusCodesTable();
             updateCrawlButtons();
 
+            // Update URL with crawl_id for bookmarkability
+            const forceRefreshCrawlId = data.crawl_id || sessionStorage.getItem('current_crawl_id');
+            if (forceRefreshCrawlId) {
+                history.replaceState({ crawl_id: forceRefreshCrawlId }, '', `/?crawl_id=${forceRefreshCrawlId}`);
+            }
+
             if (data.status === 'running') {
                 crawlState.isRunning = true;
                 crawlState.isPaused = false;
@@ -122,14 +156,91 @@ async function initializeApp() {
             } else {
                 updateStatus(`Loaded: ${data.stats.crawled} URLs, ${data.links?.length || 0} links, ${data.issues?.length || 0} issues`);
             }
+            hideLoadingOverlay();
         } catch (error) {
+            hideLoadingOverlay();
             console.error('Error loading crawl data:', error);
             updateStatus('Error loading crawl data');
         }
     }
 
-    // Check for reconnect_crawl_id URL parameter (deep-link reconnection from dashboard)
+    // Handle ?crawl_id= parameter — load specific crawl
     const urlParams = new URLSearchParams(window.location.search);
+    const crawlIdFromUrl = urlParams.get('crawl_id');
+    
+    if (crawlIdFromUrl) {
+        showLoadingOverlay('Loading crawl data...', 'Preparing crawl for display');
+        
+        try {
+            updateLoadingOverlay('Loading crawl data...', `Loading crawl #${crawlIdFromUrl} from database`);
+            const loadResponse = await fetch(`/api/crawls/${crawlIdFromUrl}/load`, { method: 'POST' });
+            const loadResult = await loadResponse.json();
+            if (!loadResult.success) {
+                hideLoadingOverlay();
+                console.log('Failed to load crawl:', loadResult.error);
+                return;
+            }
+
+            sessionStorage.setItem('current_crawl_id', crawlIdFromUrl);
+
+            // Now fetch the loaded data and populate the UI
+            updateLoadingOverlay('Loading crawl data...', 'Fetching URLs, links, and issues');
+            const statusResponse = await fetch('/api/crawl_status');
+            const data = await statusResponse.json();
+
+            clearAllTables();
+            resetStats();
+
+            crawlState.urls = [];
+            crawlState.links = data.links || [];
+            crawlState.issues = data.issues || [];
+            crawlState.stats = data.stats || {};
+            crawlState.baseUrl = data.stats?.baseUrl || '';
+
+            if (crawlState.baseUrl) {
+                document.getElementById('urlInput').value = crawlState.baseUrl;
+            }
+
+            updateLoadingOverlay('Populating results...', `Loading ${data.urls?.length || 0} URLs`);
+
+            if (data.urls && data.urls.length > 0) {
+                data.urls.forEach(url => addUrlToTable(url));
+                applyHierarchySortToAll();
+            }
+            if (data.links && data.links.length > 0) {
+                crawlState.pendingLinks = data.links;
+                if (isLinksTabActive()) updateLinksTable(data.links);
+            }
+            if (data.issues && data.issues.length > 0) {
+                crawlState.pendingIssues = data.issues;
+                if (isIssuesTabActive()) {
+                    updateIssuesTable(data.issues);
+                } else {
+                    const issuesTabButton = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.textContent.includes('Issues'));
+                    if (issuesTabButton && data.issues.length > 0) {
+                        const errorCount = data.issues.filter(i => i.type === 'error').length;
+                        const warningCount = data.issues.filter(i => i.type === 'warning').length;
+                        let badgeColor = '#3b82f6';
+                        if (errorCount > 0) badgeColor = '#ef4444';
+                        else if (warningCount > 0) badgeColor = '#f59e0b';
+                        issuesTabButton.innerHTML = `Issues <span style="background: ${badgeColor}; color: white; padding: 2px 6px; border-radius: 12px; font-size: 12px;">${data.issues.length}</span>`;
+                    }
+                }
+            }
+
+            updateStatsDisplay();
+            updateFilterCounts();
+            updateStatusCodesTable();
+            updateCrawlButtons();
+            updateStatus(`Loaded: ${data.stats?.crawled || 0} URLs, ${data.links?.length || 0} links, ${data.issues?.length || 0} issues`);
+            hideLoadingOverlay();
+        } catch (error) {
+            hideLoadingOverlay();
+            console.log('Failed to load crawl from URL param:', error.message);
+        }
+    }
+
+    // Check for reconnect_crawl_id URL parameter (deep-link reconnection from dashboard)
     const reconnectCrawlId = urlParams.get('reconnect_crawl_id');
     if (reconnectCrawlId) {
         // Remove the parameter from the URL without triggering a reload
@@ -357,6 +468,11 @@ function startPythonCrawl(url) {
     .then(data => {
         if (data.success) {
             updateStatus('Crawling in progress...');
+            // Store crawl_id and update URL
+            if (data.crawl_id) {
+                sessionStorage.setItem('current_crawl_id', data.crawl_id);
+                history.replaceState({ crawl_id: data.crawl_id }, '', `/?crawl_id=${data.crawl_id}`);
+            }
             // Refresh user info to update crawl count
             loadUserInfo();
             // Start polling for updates
@@ -989,7 +1105,7 @@ function updateIssuesTable(issues) {
 
         // Use virtual scroller for issues
         if (virtualScrollers.issues) {
-            virtualScrollers.issues.setData(issues);
+            virtualScrollers.issues.setData(hierarchySort(issues));
         }
     }
 
@@ -1173,7 +1289,7 @@ function filterIssues(filterType) {
             filteredIssues = window.currentIssues.filter(issue => issue.type === filterType);
         }
 
-        virtualScrollers.issues.setData(filteredIssues);
+        virtualScrollers.issues.setData(hierarchySort(filteredIssues));
     }
 }
 
@@ -1685,6 +1801,10 @@ async function exportData(tab = 'all') {
 
         showNotification('Preparing export...', 'info');
 
+        // Hierarchy-sort URLs and issues before sending to backend
+        filteredUrls = hierarchySort(filteredUrls);
+        filteredIssues = hierarchySort(filteredIssues);
+
         // Request export from backend
         const exportResponse = await fetch('/api/export_data', {
             method: 'POST',
@@ -2184,9 +2304,9 @@ function hierarchySort(arr) {
     return [...arr].sort(hierarchyCompare);
 }
 
-/** Apply hierarchy sort to all virtual scrollers that hold URL data. */
+/** Apply hierarchy sort to all virtual scrollers that hold URL/issue data. */
 function applyHierarchySortToAll() {
-    ['overview', 'internal', 'external'].forEach(name => {
+    ['overview', 'internal', 'external', 'issues'].forEach(name => {
         const scroller = virtualScrollers[name];
         if (!scroller || !scroller.data || scroller.data.length === 0) return;
         scroller.setData(hierarchySort(scroller.data));
@@ -2485,6 +2605,7 @@ async function reconnectToCrawl() {
                 const statusData = await statusResp.json();
                 if (statusData.urls) {
                     statusData.urls.forEach(url => addUrlToTable(url));
+                    applyHierarchySortToAll();
                 }
                 crawlState.links = statusData.links || [];
                 crawlState.issues = statusData.issues || [];

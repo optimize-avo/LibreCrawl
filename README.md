@@ -49,7 +49,7 @@ chmod +x start-librecrawl.sh
 3. Installs all dependencies automatically (`pip install -r requirements.txt`)
 4. Installs Playwright browsers for JavaScript rendering
 5. Starts LibreCrawl in local mode (no authentication)
-6. Opens your browser to `http://localhost:5000`
+6. Opens your browser to `http://localhost:5001`
 
 ### Manual Installation
 
@@ -72,7 +72,7 @@ cp .env.example .env
 # Start LibreCrawl
 docker compose up -d
 
-# Open browser to http://localhost:5000
+# Open browser to http://localhost:5001
 ```
 By default, LibreCrawl runs in local mode for easy personal use. The `.env` file controls this:
 
@@ -126,8 +126,8 @@ python main.py -l
 ```
 
 5. Open your browser and navigate to:
-   - Local: `http://localhost:5000`
-   - Network: `http://<your-ip>:5000`
+   - Local: `http://localhost:5001`
+   - Network: `http://<your-ip>:5001`
 
 
 ## LibreCrawl Plugins

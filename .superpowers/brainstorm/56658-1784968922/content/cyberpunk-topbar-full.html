@@ -1,0 +1,57 @@
+<div class="section">
+  <h2>Cyberpunk Topbar — Full Mockup</h2>
+  <p class="subtitle">Progress bar + URL input box + buttons — all using #00c2b8</p>
+</div>
+
+<div class="section">
+  <h3>Default state</h3>
+  <div style="background: #0a0a0f; border-radius: 12px; padding: 24px 32px; border: 1px solid rgba(0, 194, 184, 0.1);">
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+      <label style="font-size: 12px; color: #5a6a7a; font-family: 'SF Mono', monospace;">URL to crawl</label>
+      <input value="https://example.com" readonly style="flex:1; background: #12121a; border: 1px solid #1e2a3a; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #c8d6e5; font-family: 'SF Mono', monospace; transition: border-color 0.2s, box-shadow 0.2s;">
+      <button style="background: #00c2b8; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #052b28; cursor: pointer;">Start</button>
+      <button style="background: #12121a; color: #ef4444; border: 1px solid #1e2a3a; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer;">Stop</button>
+      <button style="background: #12121a; color: #c8d6e5; border: 1px solid #1e2a3a; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer;">Clear</button>
+    </div>
+
+    <!-- Progress bar -->
+    <div style="position: relative; overflow: hidden; border-radius: 9999px; margin: -4px 0; padding: 4px 0;">
+      <div style="height: 5px; background: #12121a; border-radius: 9999px; position: relative; overflow: hidden;">
+        <div style="height: 100%; width: 45%; background: linear-gradient(90deg, #00c2b8, #00d9cd 60%, #00a89f); border-radius: 9999px; box-shadow: 0 0 8px rgba(0, 194, 184, 0.5), 0 0 16px rgba(0, 194, 184, 0.2);"></div>
+      </div>
+    </div>
+    <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 12px; color: #00c2b8; font-family: 'SF Mono', monospace;">Crawling...</span>
+      <span style="font-size: 11px; color: #4a5568; font-family: 'SF Mono', monospace;">(45/120)</span>
+    </div>
+    <div style="font-size: 11px; color: #5a6a7a; font-family: 'SF Mono', monospace; margin-top: 4px;">→ https://example.com/products/wireless-headphones/best-deals-2024</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Input focused state</h3>
+  <div style="background: #0a0a0f; border-radius: 12px; padding: 24px 32px; border: 1px solid rgba(0, 194, 184, 0.1);">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <label style="font-size: 12px; color: #5a6a7a; font-family: 'SF Mono', monospace;">URL to crawl</label>
+      <!-- Focused input with teal border glow -->
+      <input value="https://example.com" readonly style="flex:1; background: #12121a; border: 1px solid #00c2b8; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #c8d6e5; font-family: 'SF Mono', monospace; box-shadow: 0 0 0 2px rgba(0, 194, 184, 0.2), 0 0 8px rgba(0, 194, 184, 0.15); outline: none;">
+      <button style="background: #00c2b8; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; color: #052b28; cursor: pointer;">Start</button>
+      <button style="background: #12121a; color: #ef4444; border: 1px solid #1e2a3a; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer;">Stop</button>
+      <button style="background: #12121a; color: #c8d6e5; border: 1px solid #1e2a3a; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer;">Clear</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Changes Summary</h3>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+    <div style="background: #12121a; border-radius: 8px; padding: 14px; border: 1px solid #1e2a3a;">
+      <h4 style="color: #00c2b8; font-size: 12px; margin-bottom: 6px; font-family: monospace;">Input: Focus glow</h4>
+      <p style="font-size: 11px; color: #7a8ba0; line-height: 1.5;">On focus: teal border + subtle box-shadow ring. Consistent with progress bar glow.</p>
+    </div>
+    <div style="background: #12121a; border-radius: 8px; padding: 14px; border: 1px solid #1e2a3a;">
+      <h4 style="color: #00c2b8; font-size: 12px; margin-bottom: 6px; font-family: monospace;">Buttons: Clean</h4>
+      <p style="font-size: 11px; color: #7a8ba0; line-height: 1.5;">Start button stays solid teal. Stop/Clear stay subtle. No extra glow on buttons.</p>
+    </div>
+  </div>
+</div>
