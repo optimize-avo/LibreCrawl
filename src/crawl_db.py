@@ -118,6 +118,12 @@ def init_crawl_tables():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Migration: add crawl_name column to existing crawls tables
+        try:
+            cursor.execute('ALTER TABLE crawls ADD COLUMN crawl_name TEXT DEFAULT NULL')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # Links table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS crawl_links (
@@ -460,19 +466,26 @@ def get_crawl_by_id(crawl_id):
         return None
 
 def get_user_crawls(user_id, limit=50, offset=0, status_filter=None):
-    """Get all crawls for a user"""
+    """Get all crawls for a user with issue counts"""
     try:
         with get_db() as conn:
             cursor = conn.cursor()
 
-            query = 'SELECT * FROM crawls WHERE user_id = ?'
+            query = '''
+                SELECT
+                    c.*,
+                    COUNT(DISTINCT ci.id) as issues_count
+                FROM crawls c
+                LEFT JOIN crawl_issues ci ON ci.crawl_id = c.id
+                WHERE c.user_id = ?
+            '''
             params = [user_id]
 
             if status_filter:
-                query += ' AND status = ?'
+                query += ' AND c.status = ?'
                 params.append(status_filter)
 
-            query += ' ORDER BY started_at DESC LIMIT ? OFFSET ?'
+            query += ' GROUP BY c.id ORDER BY c.started_at DESC LIMIT ? OFFSET ?'
             params.extend([limit, offset])
 
             cursor.execute(query, params)
@@ -480,8 +493,8 @@ def get_user_crawls(user_id, limit=50, offset=0, status_filter=None):
             crawls = []
             for row in cursor.fetchall():
                 crawl = dict(row)
-                # Don't parse full config for list view
                 crawl['config_snapshot'] = None  # Save bandwidth
+                crawl['display_name'] = crawl.get('crawl_name') or crawl.get('base_domain') or 'unknown'
                 crawls.append(crawl)
 
             return crawls
@@ -644,6 +657,193 @@ def get_crawl_count(user_id):
     except Exception as e:
         print(f"Error getting crawl count: {e}")
         return 0
+
+def get_crawl_history(user_id=None):
+    """
+    Get crawls grouped by base_domain with issue counts.
+    Returns list of domain groups, each with a list of crawls.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            query = '''
+                SELECT
+                    c.id, c.crawl_name, c.base_url, c.base_domain, c.status,
+                    c.started_at, c.completed_at, c.urls_crawled,
+                    c.user_id,
+                    COUNT(DISTINCT ci.id) as issues_count
+                FROM crawls c
+                LEFT JOIN crawl_issues ci ON ci.crawl_id = c.id
+            '''
+            params = []
+            if user_id:
+                query += ' WHERE c.user_id = ?'
+                params.append(user_id)
+            query += ' GROUP BY c.id ORDER BY c.base_domain, c.started_at DESC'
+
+            cursor.execute(query, params)
+            rows = [dict(row) for row in cursor.fetchall()]
+
+            # Group by domain
+            domains = {}
+            for row in rows:
+                domain = row['base_domain'] or 'unknown'
+                if domain not in domains:
+                    domains[domain] = {
+                        'domain': domain,
+                        'crawl_count': 0,
+                        'crawls': []
+                    }
+                row['display_name'] = row['crawl_name'] or domain
+                domains[domain]['crawls'].append(row)
+                domains[domain]['crawl_count'] += 1
+
+            result = sorted(domains.values(), key=lambda d: d['domain'])
+            return result
+
+    except Exception as e:
+        print(f"Error getting crawl history: {e}")
+        return []
+
+
+def compare_crawls(crawl_id_a, crawl_id_b):
+    """
+    Compare two crawls and return detailed issue diff.
+    Returns crawl metadata for both + categories with FIXED/STILL/NEW items.
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute('SELECT * FROM crawls WHERE id IN (?, ?)', (crawl_id_a, crawl_id_b))
+            crawls = {row['id']: dict(row) for row in cursor.fetchall()}
+
+            if len(crawls) < 2:
+                return None
+
+            crawl_a = crawls.get(crawl_id_a)
+            crawl_b = crawls.get(crawl_id_b)
+
+            cursor.execute('SELECT * FROM crawl_issues WHERE crawl_id = ?', (crawl_id_a,))
+            issues_a = [dict(row) for row in cursor.fetchall()]
+
+            cursor.execute('SELECT * FROM crawl_issues WHERE crawl_id = ?', (crawl_id_b,))
+            issues_b = [dict(row) for row in cursor.fetchall()]
+
+            def issue_key(issue):
+                return (issue.get('category') or '', issue.get('url') or '', issue.get('issue') or '')
+
+            keys_a = {issue_key(i): i for i in issues_a}
+            keys_b = {issue_key(i): i for i in issues_b}
+
+            all_keys = set(keys_a.keys()) | set(keys_b.keys())
+
+            categories = {}
+            for key in all_keys:
+                cat = key[0] or 'uncategorized'
+                if cat not in categories:
+                    categories[cat] = {'items': []}
+
+                in_a = key in keys_a
+                in_b = key in keys_b
+
+                if in_a and not in_b:
+                    status = 'new'
+                elif in_b and not in_a:
+                    status = 'fixed'
+                else:
+                    status = 'still'
+
+                item = {
+                    'url': key[1],
+                    'issue': key[2],
+                    'status': status,
+                    'details_a': keys_a.get(key, {}).get('details'),
+                    'details_b': keys_b.get(key, {}).get('details'),
+                    'type_a': keys_a.get(key, {}).get('type'),
+                    'type_b': keys_b.get(key, {}).get('type'),
+                }
+                categories[cat]['items'].append(item)
+
+            result_categories = []
+            for cat_name, cat_data in sorted(categories.items()):
+                items = cat_data['items']
+                count_a = sum(1 for i in items if i['status'] in ('still', 'new'))
+                count_b = sum(1 for i in items if i['status'] in ('still', 'fixed'))
+                fixed = sum(1 for i in items if i['status'] == 'fixed')
+                still = sum(1 for i in items if i['status'] == 'still')
+                new_count = sum(1 for i in items if i['status'] == 'new')
+
+                result_categories.append({
+                    'category': cat_name,
+                    'count_a': count_a,
+                    'count_b': count_b,
+                    'diff': count_a - count_b,
+                    'fixed': fixed,
+                    'still': still,
+                    'new': new_count,
+                    'items': sorted(items, key=lambda x: (x['status'] != 'fixed', x['status'] != 'still', x['url']))
+                })
+
+            return {
+                'crawl_a': {
+                    'id': crawl_id_a,
+                    'crawl_name': crawl_a['crawl_name'] or crawl_a['base_domain'],
+                    'base_url': crawl_a['base_url'],
+                    'started_at': crawl_a['started_at'],
+                    'urls_crawled': crawl_a['urls_crawled'],
+                    'status': crawl_a['status'],
+                },
+                'crawl_b': {
+                    'id': crawl_id_b,
+                    'crawl_name': crawl_b['crawl_name'] or crawl_b['base_domain'],
+                    'base_url': crawl_b['base_url'],
+                    'started_at': crawl_b['started_at'],
+                    'urls_crawled': crawl_b['urls_crawled'],
+                    'status': crawl_b['status'],
+                },
+                'summary': {
+                    'total_issues_a': len(issues_a),
+                    'total_issues_b': len(issues_b),
+                    'fixed': sum(1 for i in all_keys if i in keys_a and i not in keys_b),
+                    'still': sum(1 for i in all_keys if i in keys_a and i in keys_b),
+                    'new': sum(1 for i in all_keys if i not in keys_a and i in keys_b),
+                },
+                'categories': result_categories
+            }
+
+    except Exception as e:
+        print(f"Error comparing crawls: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def update_crawl_name(crawl_id, crawl_name):
+    """Update the display name for a crawl"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE crawls SET crawl_name = ? WHERE id = ?', (crawl_name, crawl_id))
+            return True
+    except Exception as e:
+        print(f"Error updating crawl name: {e}")
+        return False
+
+
+def get_crawl_issues_count(crawl_id):
+    """Get the number of issues for a crawl"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) as count FROM crawl_issues WHERE crawl_id = ?', (crawl_id,))
+            result = cursor.fetchone()
+            return result['count'] if result else 0
+    except Exception as e:
+        print(f"Error getting issues count: {e}")
+        return 0
+
 
 def get_database_size_mb():
     """Get total database size in MB"""

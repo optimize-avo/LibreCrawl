@@ -2,6 +2,12 @@
 
 # Start LibreCrawl - tries Docker first, falls back to Python
 
+# Build Tailwind CSS for UI redesign v2
+if [ -f package.json ]; then
+  echo "Building Tailwind CSS..."
+  npm run build:css || echo "Warning: CSS build failed; continuing with last build (if any)."
+fi
+
 echo "Checking for Docker..."
 if command -v docker &> /dev/null && command -v docker compose &> /dev/null; then
     echo "Docker found! Starting LibreCrawl with Docker..."
@@ -16,7 +22,7 @@ if command -v docker &> /dev/null && command -v docker compose &> /dev/null; the
         echo ""
         echo "================================================================================"
         echo "LibreCrawl is running!"
-        echo "Opening browser to http://localhost:5000"
+        echo "Opening browser to http://localhost:5001"
         echo ""
         echo "Press Ctrl+C to stop LibreCrawl and exit"
         echo "DO NOT close this terminal or LibreCrawl will keep running in the background!"
@@ -25,11 +31,11 @@ if command -v docker &> /dev/null && command -v docker compose &> /dev/null; the
 
         # Detect OS and open browser
         if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            xdg-open http://localhost:5000 2>/dev/null || sensible-browser http://localhost:5000
+            xdg-open http://localhost:5001 2>/dev/null || sensible-browser http://localhost:5001
         elif [[ "$OSTYPE" == "darwin"* ]]; then
-            open http://localhost:5000
+            open http://localhost:5001
         else
-            echo "Please open http://localhost:5000 in your browser"
+            echo "Please open http://localhost:5001 in your browser"
         fi
 
         # Trap Ctrl+C to gracefully shutdown
@@ -82,14 +88,14 @@ else
 
     # Run LibreCrawl with Python in local mode
     echo "Starting LibreCrawl in local mode..."
-    echo "Opening browser to http://localhost:5000"
+    echo "Opening browser to http://localhost:5001"
 
     # Open browser after 2 seconds (give Flask time to start)
     (sleep 2 && {
         if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            xdg-open http://localhost:5000 2>/dev/null || sensible-browser http://localhost:5000
+            xdg-open http://localhost:5001 2>/dev/null || sensible-browser http://localhost:5001
         elif [[ "$OSTYPE" == "darwin"* ]]; then
-            open http://localhost:5000
+            open http://localhost:5001
         fi
     }) &
 

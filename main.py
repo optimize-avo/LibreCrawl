@@ -703,6 +703,13 @@ def dashboard():
     """Crawl history dashboard"""
     return render_template('dashboard.html')
 
+@app.route('/compare')
+@login_required
+def compare_page():
+    """Compare page — compare two crawls"""
+    user = get_user_by_id(session.get('user_id'))
+    return render_template('compare.html', user=user)
+
 @app.route('/debug/memory')
 @login_required
 def debug_memory_page():
@@ -1065,6 +1072,86 @@ def list_crawls():
             'crawls': crawls,
             'total': total_count
         })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/crawls/history')
+@login_required
+def crawl_history():
+    """Get crawls grouped by domain"""
+    try:
+        user_id = session.get('user_id')
+        from src.crawl_db import get_crawl_history
+
+        domains = get_crawl_history(user_id=user_id)
+
+        return jsonify({
+            'success': True,
+            'domains': domains
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/crawls/compare')
+@login_required
+def compare_crawls_endpoint():
+    """Compare two crawls with detailed issue diff"""
+    try:
+        user_id = session.get('user_id')
+        from src.crawl_db import compare_crawls, get_crawl_by_id
+
+        crawl_id_a = request.args.get('ids', type=str)
+        if not crawl_id_a or ',' not in crawl_id_a:
+            return jsonify({'success': False, 'error': 'Provide two crawl IDs as ids=1,2'}), 400
+
+        id_a, id_b = [int(x.strip()) for x in crawl_id_a.split(',')]
+
+        # Verify ownership
+        crawl_a = get_crawl_by_id(id_a)
+        crawl_b = get_crawl_by_id(id_b)
+        if not crawl_a or not crawl_b:
+            return jsonify({'success': False, 'error': 'Crawl not found'}), 404
+
+        if user_id:
+            if crawl_a.get('user_id') != user_id or crawl_b.get('user_id') != user_id:
+                return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+        result = compare_crawls(id_a, id_b)
+        if not result:
+            return jsonify({'success': False, 'error': 'Failed to compare crawls'}), 500
+
+        return jsonify({
+            'success': True,
+            **result
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/crawls/<int:crawl_id>/save-name', methods=['POST'])
+@login_required
+def save_crawl_name(crawl_id):
+    """Update display name for a crawl"""
+    try:
+        user_id = session.get('user_id')
+        from src.crawl_db import update_crawl_name, get_crawl_by_id
+
+        crawl = get_crawl_by_id(crawl_id)
+        if not crawl:
+            return jsonify({'success': False, 'error': 'Crawl not found'}), 404
+
+        if user_id and crawl.get('user_id') != user_id:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+        data = request.get_json()
+        crawl_name = data.get('crawl_name', '').strip()
+
+        if not crawl_name:
+            crawl_name = crawl.get('base_domain') or 'unnamed'
+
+        success = update_crawl_name(crawl_id, crawl_name)
+        return jsonify({'success': success, 'crawl_name': crawl_name})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 

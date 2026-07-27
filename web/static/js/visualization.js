@@ -41,21 +41,21 @@ function initVisualization() {
                     'width': 'data(size)',
                     'height': 'data(size)',
                     'font-size': '12px',
-                    'color': '#e5e7eb',
-                    'text-outline-color': '#1f2937',
+                    'color': '#f0f0f0',
+                    'text-outline-color': '#0f0f0f',
                     'text-outline-width': 2,
                     'text-valign': 'bottom',
                     'text-halign': 'center',
                     'text-margin-y': 5,
                     'overlay-opacity': 0,
                     'border-width': 2,
-                    'border-color': '#374151'
+                    'border-color': '#1a1a1a'
                 }
             },
             {
                 selector: 'node:selected',
                 style: {
-                    'border-color': '#8b5cf6',
+                    'border-color': '#00c2b8',
                     'border-width': 3,
                     'overlay-opacity': 0
                 }
@@ -64,19 +64,19 @@ function initVisualization() {
                 selector: 'edge',
                 style: {
                     'width': 2,
-                    'line-color': '#4b5563',
-                    'target-arrow-color': '#4b5563',
+                    'line-color': 'rgba(0, 194, 184, 0.45)',
+                    'target-arrow-color': 'rgba(0, 194, 184, 0.45)',
                     'target-arrow-shape': 'triangle',
                     'curve-style': 'bezier',
                     'arrow-scale': 1,
-                    'opacity': 0.6
+                    'opacity': 0.7
                 }
             },
             {
                 selector: 'edge:selected',
                 style: {
-                    'line-color': '#8b5cf6',
-                    'target-arrow-color': '#8b5cf6',
+                    'line-color': '#00c2b8',
+                    'target-arrow-color': '#00c2b8',
                     'width': 3,
                     'opacity': 1
                 }
