@@ -59,7 +59,7 @@ USER librecrawl
 RUN playwright install
 
 # Expose Flask port
-EXPOSE 5000
+EXPOSE 5001
 
 # Set environment variables
 ENV FLASK_APP=main.py

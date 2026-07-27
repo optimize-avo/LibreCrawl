@@ -2,16 +2,46 @@
 // Dashboard - Domain Sidebar + Crawl Detail
 // ========================================
 
+// Dashboard Loading Overlay Utilities
+function showDashboardLoading(text, step) {
+    const overlay = document.getElementById('loadingOverlay');
+    const textEl = document.getElementById('loadingOverlayText');
+    const stepEl = document.getElementById('loadingOverlayStep');
+    if (!overlay) return;
+    overlay.style.display = 'flex';
+    if (textEl) textEl.textContent = text || 'Loading...';
+    if (stepEl) stepEl.textContent = step || '';
+}
+
+function updateDashboardLoading(text, step) {
+    const textEl = document.getElementById('loadingOverlayText');
+    const stepEl = document.getElementById('loadingOverlayStep');
+    if (textEl && text) textEl.textContent = text;
+    if (stepEl) stepEl.textContent = step || '';
+}
+
+function hideDashboardLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
 // Dashboard state
 let selectedDomain = null;
 let compareMode = false;
 let selectedCrawls = new Set();
 let allDomains = [];
+let activeCrawlRefreshInterval = null;
 
 async function loadDashboard() {
     try {
-        const response = await fetch('/api/crawls/history');
-        const data = await response.json();
+        // Fetch active crawls and history in parallel
+        const [historyResponse, activeResponse] = await Promise.all([
+            fetch('/api/crawls/history'),
+            fetch('/api/my_active_crawls').catch(() => ({ json: () => ({ success: false, crawls: [] }) }))
+        ]);
+
+        const data = await historyResponse.json();
+        const activeData = await activeResponse.json();
 
         if (!data.success) {
             console.error('Failed to load history:', data.error);
@@ -20,16 +50,101 @@ async function loadDashboard() {
 
         allDomains = data.domains || [];
         renderDomainSidebar();
+        renderActiveCrawls(activeData.crawls || []);
 
-        // Auto-select first domain if available
-        if (allDomains.length > 0 && !selectedDomain) {
-            selectDomain(allDomains[0].domain);
-        } else if (allDomains.length === 0) {
+        // Auto-select first domain if none selected, or refresh if one is already selected
+        if (allDomains.length > 0) {
+            if (!selectedDomain || !allDomains.find(d => d.domain === selectedDomain)) {
+                selectDomain(allDomains[0].domain);
+            } else {
+                renderCrawlDetail();
+            }
+        } else {
+            selectedDomain = null;
             renderCrawlDetailEmpty();
         }
     } catch (error) {
         console.error('Error loading dashboard:', error);
     }
+}
+
+// ========================================
+// Active Crawls Section
+// ========================================
+
+function renderActiveCrawls(crawls) {
+    const container = document.getElementById('activeCrawlsSection');
+    if (!container) return;
+
+    if (crawls.length === 0) {
+        container.style.display = 'none';
+        // Stop auto-refresh if no active crawls
+        if (activeCrawlRefreshInterval) {
+            clearInterval(activeCrawlRefreshInterval);
+            activeCrawlRefreshInterval = null;
+        }
+        return;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = `
+        <div style="background: linear-gradient(135deg, #1e40af, #3b82f6); border-radius: 10px; padding: 16px 20px; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: #ffffff; margin-bottom: 12px;">
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: #4ade80; animation: pulse 2s infinite;"></div>
+                <span>Active Crawl${crawls.length > 1 ? 's' : ''}</span>
+                <span style="font-size: 12px; font-weight: 400; opacity: 0.8; margin-left: 4px;">${crawls.length} in progress</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                ${crawls.map(crawl => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer; transition: background 0.2s;"
+                         onclick="reconnectFromDashboard(${crawl.id})"
+                         onmouseover="this.style.background='rgba(255,255,255,0.2)'"
+                         onmouseout="this.style.background='rgba(255,255,255,0.12)'">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 600; font-size: 14px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(crawl.base_url)}</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 2px;">
+                                ${crawl.status === 'running' ? 'Crawling...' : 'Paused'}
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 100px; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden;">
+                                    <div style="height: 100%; background: linear-gradient(90deg, #4ade80, #22d3ee); border-radius: 3px; width: ${crawl.progress_percent || 0}%; transition: width 0.3s ease;"></div>
+                                </div>
+                                <span style="font-size: 13px; font-weight: 600; color: #ffffff; min-width: 36px;">${crawl.progress_percent || 0}%</span>
+                            </div>
+                            <button style="padding: 6px 14px; background: rgba(255,255,255,0.2); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: background 0.2s;"
+                                    onclick="event.stopPropagation(); reconnectFromDashboard(${crawl.id})"
+                                    onmouseover="this.style.background='rgba(255,255,255,0.3)'"
+                                    onmouseout="this.style.background='rgba(255,255,255,0.2)'">
+                                Reconnect
+                            </button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+
+    // Start auto-refresh if not already running
+    if (!activeCrawlRefreshInterval) {
+        activeCrawlRefreshInterval = setInterval(async () => {
+            try {
+                const response = await fetch('/api/my_active_crawls');
+                const data = await response.json();
+                renderActiveCrawls(data.crawls || []);
+            } catch (error) {
+                console.error('Error refreshing active crawls:', error);
+            }
+        }, 30000);
+    }
+}
+
+function reconnectFromDashboard(crawlId) {
+    sessionStorage.setItem('force_ui_refresh', 'true');
+    sessionStorage.setItem('reconnect_crawl_id', crawlId);
+    sessionStorage.setItem('current_crawl_id', crawlId);
+    window.location.href = `/?crawl_id=${crawlId}`;
 }
 
 function renderDomainSidebar() {
@@ -113,9 +228,12 @@ function renderCrawlDetail() {
         const date = new Date(crawl.started_at).toLocaleString();
         const issues = crawl.issues_count || 0;
         const isSelected = selectedCrawls.has(crawl.id);
+        const urlsCrawled = crawl.urls_crawled || 0;
+        const clickable = !compareMode && urlsCrawled > 0;
 
         html += `
-            <div class="crawl-card ${isSelected ? 'selected' : ''}">
+            <div class="crawl-card ${isSelected ? 'selected' : ''}"
+                 ${clickable ? `onclick="openCrawl(${crawl.id}, '${crawl.status}', ${urlsCrawled})" style="cursor:pointer;"` : ''}>
                 ${compareMode ? `<input type="checkbox" class="compare-checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCrawlSelect(${crawl.id})">` : ''}
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -124,15 +242,14 @@ function renderCrawlDetail() {
                         ${crawl.display_name ? `<span style="font-size:12px;color:var(--fg-muted);">— ${escapeHtml(crawl.display_name)}</span>` : ''}
                     </div>
                     <div style="display:flex;gap:16px;font-size:12px;color:var(--fg-muted);">
-                        <span>${crawl.urls_crawled || 0} URLs</span>
+                        <span>${urlsCrawled} URLs</span>
                         <span style="color:${issues > 0 ? 'var(--error)' : 'var(--success)'};">${issues} issues</span>
                         ${crawl.completed_at ? `<span>${formatDuration(crawl.started_at, crawl.completed_at)}</span>` : ''}
                     </div>
                 </div>
                 <div style="display:flex;gap:6px;flex-shrink:0;">
-                    ${crawl.urls_crawled > 0 ? `<button class="action-btn" onclick="loadCrawl(${crawl.id})">Load</button>` : ''}
-                    <button class="action-btn" onclick="renameCrawl(${crawl.id}, '${(crawl.display_name || '').replace(/'/g, "\\'")}')">Rename</button>
-                    <button class="action-btn danger" onclick="deleteCrawl(${crawl.id})">Delete</button>
+                    <button class="action-btn" onclick="event.stopPropagation(); renameCrawl(${crawl.id}, '${(crawl.display_name || '').replace(/'/g, "\\'")}')">Rename</button>
+                    <button class="action-btn danger" onclick="event.stopPropagation(); deleteCrawl(${crawl.id})">Delete</button>
                 </div>
             </div>
         `;
@@ -185,19 +302,39 @@ function escapeHtml(str) {
 // Crawl Actions
 // ========================================
 
-async function loadCrawl(crawlId) {
+async function openCrawl(crawlId, status, urlsCrawled) {
+    if (urlsCrawled === 0) {
+        alert('No URLs crawled yet — nothing to load.');
+        return;
+    }
+
     if (!confirm('Load this crawl? Current data will be lost.')) return;
+
+    // Show loading overlay on dashboard
+    showDashboardLoading('Loading crawl data...', `Preparing crawl #${crawlId}`);
+
+    // Use /load for completed crawls (view-only), /resume for interrupted crawls
+    const isCompleted = status === 'completed';
+    const endpoint = isCompleted
+        ? `/api/crawls/${crawlId}/load`
+        : `/api/crawls/${crawlId}/resume`;
+
     try {
-        const response = await fetch(`/api/crawls/${crawlId}/load`, { method: 'POST' });
+        updateDashboardLoading('Loading crawl data...', 'Fetching from database...');
+        const response = await fetch(endpoint, { method: 'POST' });
         const data = await response.json();
         if (data.success) {
+            updateDashboardLoading('Redirecting...', 'Crawl loaded successfully');
             sessionStorage.setItem('force_ui_refresh', 'true');
-            window.location.href = '/';
+            sessionStorage.setItem('current_crawl_id', crawlId);
+            window.location.href = `/?crawl_id=${crawlId}`;
         } else {
-            alert('Error: ' + (data.error || data.message));
+            hideDashboardLoading();
+            alert('Error: ' + (data.error || data.message || 'Unknown error'));
         }
     } catch (error) {
-        alert('Error loading crawl: ' + error.message);
+        hideDashboardLoading();
+        alert('Error opening crawl: ' + error.message);
     }
 }
 

@@ -40,22 +40,25 @@ class VirtualScroller {
         const columnCount = headerRow ? headerRow.children.length : 1;
 
         // Create spacer rows for virtual scrolling (top and bottom padding)
+        // These must be COMPLETELY invisible - no borders, no gaps, no visual artifacts.
         this.topSpacer = document.createElement('tr');
+        this.topSpacer.className = 'virtual-spacer';
+        this.topSpacer.style.height = '0px';
+        this.topSpacer.style.lineHeight = '0px';
+        this.topSpacer.style.overflow = 'hidden';
         const topCell = document.createElement('td');
         topCell.colSpan = columnCount;
-        topCell.style.height = '0px';
-        topCell.style.padding = '0';
-        topCell.style.border = 'none';
-        topCell.style.pointerEvents = 'none';
+        topCell.style.cssText = 'height:0 !important;padding:0 !important;border:0 !important;margin:0 !important;overflow:hidden;line-height:0;font-size:0;pointer-events:none;';
         this.topSpacer.appendChild(topCell);
 
         this.bottomSpacer = document.createElement('tr');
+        this.bottomSpacer.className = 'virtual-spacer';
+        this.bottomSpacer.style.height = '0px';
+        this.bottomSpacer.style.lineHeight = '0px';
+        this.bottomSpacer.style.overflow = 'hidden';
         const bottomCell = document.createElement('td');
         bottomCell.colSpan = columnCount;
-        bottomCell.style.height = '0px';
-        bottomCell.style.padding = '0';
-        bottomCell.style.border = 'none';
-        bottomCell.style.pointerEvents = 'none';
+        bottomCell.style.cssText = 'height:0 !important;padding:0 !important;border:0 !important;margin:0 !important;overflow:hidden;line-height:0;font-size:0;pointer-events:none;';
         this.bottomSpacer.appendChild(bottomCell);
 
         // Insert spacers at top and bottom of tbody
@@ -122,11 +125,13 @@ class VirtualScroller {
             );
             existingRows.forEach(row => row.remove());
 
-            if (this.topSpacer && this.topSpacer.firstChild) {
-                this.topSpacer.firstChild.style.height = '0px';
+            if (this.topSpacer) {
+                this.topSpacer.style.height = '0px';
+                if (this.topSpacer.firstChild) this.topSpacer.firstChild.style.height = '0px';
             }
-            if (this.bottomSpacer && this.bottomSpacer.firstChild) {
-                this.bottomSpacer.firstChild.style.height = '0px';
+            if (this.bottomSpacer) {
+                this.bottomSpacer.style.height = '0px';
+                if (this.bottomSpacer.firstChild) this.bottomSpacer.firstChild.style.height = '0px';
             }
             return;
         }
@@ -148,8 +153,11 @@ class VirtualScroller {
         const topHeight = start * this.rowHeight;
         const bottomHeight = (this.data.length - end) * this.rowHeight;
 
-        // Update spacers (set height on the TD cells)
+        // Update spacers — set height on BOTH the TR and the TD so that
+        // border-collapse: collapse can't produce phantom gaps.
+        this.topSpacer.style.height = topHeight + 'px';
         this.topSpacer.firstChild.style.height = topHeight + 'px';
+        this.bottomSpacer.style.height = bottomHeight + 'px';
         this.bottomSpacer.firstChild.style.height = bottomHeight + 'px';
 
         // Remove existing data rows (keep spacers)
@@ -211,11 +219,13 @@ class VirtualScroller {
         existingRows.forEach(row => row.remove());
 
         // Reset spacer heights
-        if (this.topSpacer && this.topSpacer.firstChild) {
-            this.topSpacer.firstChild.style.height = '0px';
+        if (this.topSpacer) {
+            this.topSpacer.style.height = '0px';
+            if (this.topSpacer.firstChild) this.topSpacer.firstChild.style.height = '0px';
         }
-        if (this.bottomSpacer && this.bottomSpacer.firstChild) {
-            this.bottomSpacer.firstChild.style.height = '0px';
+        if (this.bottomSpacer) {
+            this.bottomSpacer.style.height = '0px';
+            if (this.bottomSpacer.firstChild) this.bottomSpacer.firstChild.style.height = '0px';
         }
 
         console.log('Virtual scroller cleared');

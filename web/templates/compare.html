@@ -14,10 +14,11 @@
             min-height: 100vh;
             margin: 0;
         }
-        .app-shell { display: flex; min-height: 100vh; }
+        .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
         .main-content {
             flex: 1; min-width: 0;
             padding: 24px 28px;
+            overflow-y: auto;
         }
 
         /* Diff item styles */
@@ -110,7 +111,7 @@
 </head>
 <body>
     <div class="app-shell">
-        {% include 'partials/_rail.html' %}
+        {% include 'partials/_navbar.html' %}
         <div class="main-content">
             <!-- Header -->
             <div id="compareHeader" style="margin-bottom:24px;">
@@ -124,5 +125,13 @@
     </div>
 
     <script src="/static/js/compare.js"></script>
+    <script>
+        async function logout() {
+            try {
+                await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            } catch (e) { /* ignore */ }
+            window.location.href = '/login';
+        }
+    </script>
 </body>
 </html>

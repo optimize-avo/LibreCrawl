@@ -29,7 +29,7 @@
         Export
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       </button>
-      <div class="export-dropdown-menu hidden absolute right-0 mt-1 min-w-[200px] bg-popover border border-border-hairline rounded-md shadow-lg py-1 z-50" id="exportDropdownMenu">
+      <div class="export-dropdown-menu hidden absolute right-0 mt-1 min-w-[200px] bg-popover border border-border-hairline rounded-md shadow-lg py-1 z-[9999]" id="exportDropdownMenu">
         <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('all')">Export All Data</div>
         <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('overview')">Export: Overview</div>
         <div class="export-dropdown-item px-3 py-1.5 text-[13px] text-ink hover:bg-muted cursor-pointer" onclick="exportData('internal')">Export: Internal URLs</div>
@@ -42,12 +42,24 @@
       </div>
     </div>
 
-    <button id="saveCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed" onclick="openSaveModal()" disabled>Save</button>
-    <button id="loadCrawlBtn" class="inline-flex items-center bg-card text-ink border border-border-hairline px-3 py-2 rounded-md text-[13px] font-medium hover:bg-muted" onclick="openLoadModal()">Load</button>
   </div>
 
-  <div id="progressContainer" class="hidden mt-3 flex items-center gap-3">
-    <div class="progress-track flex-1"><div id="progressFill" class="progress-fill" style="width:0%"></div></div>
-    <span id="progressText" class="text-[12px] text-fg-muted shrink-0">Initializing...</span>
+  <div id="progressContainer" class="hidden mt-3">
+    <div class="progress-track">
+      <div class="progress-track-inner">
+        <div id="progressFill" class="progress-fill" style="width:0%">
+          <div class="glitch-layer glitch-a"></div>
+          <div class="glitch-layer glitch-b"></div>
+          <div class="progress-scanlines"></div>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 mt-2">
+      <span id="progressText" class="text-[12px] text-fg-muted shrink-0" style="color: var(--primary); font-family: monospace;">Initializing...</span>
+      <span id="progressCount" class="text-[11px] shrink-0" style="color: var(--fg-muted);"></span>
+    </div>
+    <div class="mt-1">
+      <span id="progressCurrentUrl" class="text-[11px] truncate block" style="color: var(--fg-muted);"></span>
+    </div>
   </div>
 </header>
