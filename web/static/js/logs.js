@@ -185,14 +185,25 @@
         }
     }
 
-    // --- SSE ---
-    function connectSSE() {
-        const evtSource = new EventSource('/api/logs/stream');
-        evtSource.onmessage = function (event) {
-            try {
-                const entry = JSON.parse(event.data);
+    // --- Polling (replaces SSE) ---
+    let lastPollSince = Date.now() / 1000;
+    let isFirstPoll = true;
+
+    async function pollLogs() {
+        try {
+            const resp = await fetch(`/api/logs/poll?since=${lastPollSince}`);
+            const data = await resp.json();
+            if (!data.success) return;
+            const entries = data.logs || [];
+            if (data.summary) {
+                summary = data.summary;
+                updateSummary();
+            }
+            for (const entry of entries) {
+                const ts = entry.timestamp_epoch || 0;
+                if (ts > lastPollSince) lastPollSince = ts;
                 totalEntries++;
-                if (currentPage === 1) {
+                if (currentPage === 1 && !isFirstPoll) {
                     allEntries.unshift(entry);
                     if (allEntries.length > perPage) allEntries.pop();
                     renderAll();
@@ -203,15 +214,19 @@
                     renderPagination();
                     updateSummary();
                 }
-            } catch (e) {
-                console.error('SSE parse error:', e);
             }
-        };
-        evtSource.onerror = function () {
-            console.warn('SSE connection lost, reconnecting in 3s...');
-            evtSource.close();
-            setTimeout(connectSSE, 3000);
-        };
+            isFirstPoll = false;
+        } catch (e) {
+            console.error('Poll error:', e);
+        }
+    }
+
+    let pollTimer = null;
+    function startPolling() {
+        pollTimer = setInterval(pollLogs, 2000);
+    }
+    function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
     // --- Summary ---
@@ -286,5 +301,5 @@
     loadInitialLogs();
     loadActiveCrawls();
     setInterval(loadActiveCrawls, 5000);
-    connectSSE();
+    startPolling();
 })();

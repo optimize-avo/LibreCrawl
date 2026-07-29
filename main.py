@@ -774,32 +774,19 @@ def get_logs():
     return jsonify({'success': True, **result})
 
 
-@app.route('/api/logs/stream')
+@app.route('/api/logs/poll')
 @login_required
-def logs_stream():
-    """SSE endpoint for real-time log streaming."""
-    q = log_tracker.subscribe()
+def logs_poll():
+    """Polling endpoint — returns new log entries since a given epoch (lightweight, no blocking)."""
+    since = request.args.get('since', type=float)
 
-    def event_stream():
-        try:
-            while True:
-                while q:
-                    entry = q.popleft()
-                    yield f'data: {json.dumps(entry)}\n\n'
-                time.sleep(0.5)
-        except GeneratorExit:
-            pass
-        finally:
-            log_tracker.unsubscribe(q)
-
-    return app.response_class(
-        event_stream(),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no',
-        },
+    result = log_tracker.get_logs(
+        since=since,
+        limit=200,
+        page=1,
+        per_page=200,
     )
+    return jsonify({'success': True, 'logs': result.get('logs', []), 'summary': result.get('summary', {})})
 
 
 @app.route('/api/logs/active')
