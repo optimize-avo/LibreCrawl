@@ -13,7 +13,10 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
 from urllib.robotparser import RobotFileParser
+import uuid
 import nest_asyncio
+
+from src.log_tracker import log_tracker
 
 
 def classify_fetch_error(exc_or_msg):
@@ -264,7 +267,7 @@ class WebCrawler:
             ]
         }
 
-    def start_crawl(self, url, user_id=None, session_id=None):
+    def start_crawl(self, url, user_id=None, session_id=None, owner_username=None):
         """Start crawling from the given URL"""
         if self.is_running:
             return False, "Crawl already in progress"
@@ -278,19 +281,20 @@ class WebCrawler:
             self.base_url = f"{parsed.scheme}://{parsed.netloc}"
             self.base_domain = parsed.netloc
 
-            # Create database crawl record if session_id provided
-            if session_id:
-                from src.crawl_db import create_crawl
-                self.crawl_id = create_crawl(
-                    user_id=user_id,
-                    session_id=session_id,
-                    base_url=self.base_url,
-                    base_domain=self.base_domain,
-                    config_snapshot=self.config
-                )
-                if self.crawl_id:
-                    self.db_save_enabled = True
-                    print(f"Database persistence enabled for crawl {self.crawl_id}")
+            # Create database crawl record — required
+            from src.crawl_db import create_crawl
+            self.crawl_id = create_crawl(
+                user_id=user_id,
+                session_id=session_id or str(uuid.uuid4()),
+                base_url=self.base_url,
+                base_domain=self.base_domain,
+                config_snapshot=self.config,
+                owner_username=owner_username
+            )
+            if not self.crawl_id:
+                return False, "Gagal membuat record database"
+            self.db_save_enabled = True
+            print(f"Database persistence enabled for crawl {self.crawl_id}")
 
             # Initialize components
             self._initialize_components()
@@ -317,6 +321,9 @@ class WebCrawler:
             self._natural_finish = False
             self.crawl_thread = threading.Thread(target=self._crawl_worker)
             self.crawl_thread.start()
+
+            log_tracker.info('crawler', f'Memulai audit {url}',
+                             crawl_id=self.crawl_id, url=url, status='running', progress=0)
 
             return True, "Crawl started successfully"
 
@@ -377,6 +384,8 @@ class WebCrawler:
                 filtered_count += 1
 
         self.stats['discovered'] = self.link_manager.get_stats()['discovered']
+        log_tracker.info('crawler', f'Sitemap: {added_count} URL ditemukan, {filtered_count} difilter',
+                         crawl_id=self.crawl_id, status='running')
         print(f"Sitemap processing: {added_count} added, {filtered_count} filtered")
 
     def stop_crawl(self):
@@ -394,6 +403,9 @@ class WebCrawler:
             if not self._natural_finish:
                 from src.crawl_db import set_crawl_status
                 set_crawl_status(self.crawl_id, 'stopped')
+
+        log_tracker.info('crawler', 'Audit dihentikan oleh pengguna',
+                         crawl_id=self.crawl_id, status='stopped')
 
         # Clean up JavaScript resources if enabled
         if self.js_renderer:
@@ -415,6 +427,10 @@ class WebCrawler:
             from src.crawl_db import set_crawl_status
             set_crawl_status(self.crawl_id, 'paused')
 
+        log_tracker.info('crawler', 'Audit dijeda',
+                         crawl_id=self.crawl_id, status='paused',
+                         progress=min(100, (self.stats['crawled'] / max(self.stats['discovered'], 1)) * 100))
+
         return True, "Crawl paused"
 
     def resume_crawl(self):
@@ -429,6 +445,10 @@ class WebCrawler:
         if self.db_save_enabled and self.crawl_id:
             from src.crawl_db import set_crawl_status
             set_crawl_status(self.crawl_id, 'running')
+
+        log_tracker.info('crawler', 'Audit dilanjutkan',
+                         crawl_id=self.crawl_id, status='running',
+                         progress=min(100, (self.stats['crawled'] / max(self.stats['discovered'], 1)) * 100))
 
         return True, "Crawl resumed"
 
@@ -448,10 +468,6 @@ class WebCrawler:
 
             if crawl_data['status'] != 'completed':
                 return False, f"Cannot load crawl with status: {crawl_data['status']} (use resume for interrupted crawls)"
-
-            # Verify user owns this crawl (if not guest)
-            if user_id and crawl_data.get('user_id') != user_id:
-                return False, "Unauthorized - you don't own this crawl"
 
             # Restore basic state
             self.crawl_id = crawl_id
@@ -485,6 +501,8 @@ class WebCrawler:
             self.stats['depth'] = crawl_data.get('max_depth_reached', 0)
             self.stats['start_time'] = time.time()
 
+            log_tracker.info('crawler', f'Memuat hasil audit: {self.stats["crawled"]} URL',
+                             crawl_id=self.crawl_id, status='completed')
             return True, f"Loaded {self.stats['crawled']} URLs from completed crawl"
 
         except Exception as e:
@@ -593,6 +611,7 @@ class WebCrawler:
                       f"{len(self.link_manager.visited_urls)} visited")
 
             # If queue is empty (no checkpoint or crawl crashed early), rebuild queue from links
+            added_count = 0
             if not self.link_manager.discovered_urls:
                 print("Queue is empty - rebuilding from discovered links")
 
@@ -600,18 +619,23 @@ class WebCrawler:
                 crawled_urls = set(url_data.get('url') for url_data in self.crawl_results)
 
                 # Add any linked URLs that haven't been crawled yet
-                added_count = 0
                 for link in loaded_links:
                     target_url = link.get('target_url')
                     if target_url and target_url not in crawled_urls and link.get('is_internal'):
                         self.link_manager.add_url(target_url, link.get('depth', 1))
                         added_count += 1
 
-            print(f"Added {added_count} pending URLs to queue from links")
+                print(f"Added {added_count} pending URLs to queue from links")
 
             # If still empty, crawl is complete
             if not self.link_manager.discovered_urls:
                 print("No pending URLs found - crawl was already complete")
+                if self.crawl_results:
+                    self.stats['discovered'] = len(self.link_manager.all_discovered_urls)
+                    set_crawl_status(crawl_id, 'completed')
+                    log_tracker.info('crawler', f'Audit sudah selesai: {self.stats["crawled"]} URL terindeks',
+                                     crawl_id=self.crawl_id, status='completed', progress=100)
+                    return True, f"Crawl already complete - {self.stats['crawled']} URLs crawled"
 
             self.stats['discovered'] = len(self.link_manager.all_discovered_urls)
 
@@ -627,6 +651,9 @@ class WebCrawler:
             self.crawl_thread = threading.Thread(target=self._crawl_worker)
             self.crawl_thread.start()
 
+            log_tracker.info('crawler', f'Melanjutkan audit: {self.stats["crawled"]} URL sudah diproses',
+                             crawl_id=self.crawl_id, status='running',
+                             progress=min(100, (self.stats['crawled'] / max(self.stats['discovered'], 1)) * 100))
             return True, f"Resumed crawl from {self.stats['crawled']} URLs"
 
         except Exception as e:
@@ -692,6 +719,10 @@ class WebCrawler:
         from src.crawl_db import save_url_batch, save_links_batch, save_issues_batch, update_crawl_stats
 
         try:
+            n_urls = len(self.unsaved_urls)
+            n_links = len(self.unsaved_links)
+            n_issues = len(self.unsaved_issues)
+
             # Save URLs
             if self.unsaved_urls:
                 save_url_batch(self.crawl_id, self.unsaved_urls)
@@ -719,6 +750,9 @@ class WebCrawler:
             )
 
             self.last_save_time = time.time()
+            if n_urls or n_links or n_issues:
+                log_tracker.info('crawler', f'Menyimpan progres: {n_urls} URL, {n_links} tautan, {n_issues} isu',
+                                 crawl_id=self.crawl_id, status='running')
             print(f"Saved batch to database for crawl {self.crawl_id}")
 
         except Exception as e:
@@ -835,6 +869,12 @@ class WebCrawler:
                             continue
 
                         # Submit crawl task immediately - rate limiting happens inside the worker
+                        crawled_count = self.stats['crawled']
+                        discovered_count = max(self.stats['discovered'], 1)
+                        pct = min(100, (crawled_count / discovered_count) * 100)
+                        log_tracker.info('crawler', f'Memeriksa {current_url}',
+                                         crawl_id=self.crawl_id, url=current_url, status='running',
+                                         progress=round(pct, 1))
                         print(f"Submitting task for: {current_url}")
                         self.current_crawl_url = current_url
                         future = executor.submit(self._crawl_url, current_url, depth)
@@ -852,6 +892,16 @@ class WebCrawler:
                                         self.crawl_results.append(result)
                                         self.stats['crawled'] += 1
                                         self.stats['depth'] = max(self.stats['depth'], result.get('depth', 0))
+                                        crawled_count = self.stats['crawled']
+                                        discovered_count = max(self.stats['discovered'], 1)
+                                        pct = min(100, (crawled_count / discovered_count) * 100)
+                                        status_code = result.get('status_code', 0)
+                                        if status_code >= 400:
+                                            log_tracker.warn('crawler', f'Gagal mengakses {result["url"]} — kode {status_code}',
+                                                         crawl_id=self.crawl_id, url=result['url'], status='running', progress=round(pct, 1))
+                                        else:
+                                            log_tracker.info('crawler', f'Berhasil mengakses {result["url"]} ({status_code})',
+                                                         crawl_id=self.crawl_id, url=result['url'], status='running', progress=round(pct, 1))
                                         print(f"Added URL to results: {result['url']} - Total in results: {len(self.crawl_results)}")
 
                                     # Track per-user memory
@@ -869,6 +919,8 @@ class WebCrawler:
                                         if self.db_save_enabled:
                                             self.unsaved_issues.extend(new_issues)
                             except Exception as e:
+                                log_tracker.error('crawler', f'Gagal memproses URL: {e}',
+                                                  crawl_id=self.crawl_id, status='running')
                                 print(f"Error in crawl task: {e}")
 
                     # Remove completed futures
@@ -878,6 +930,8 @@ class WebCrawler:
                     # Demo mode: check per-user memory limit
                     if self.config.get('demo_mode') and self.user_memory.total_bytes >= self.config.get('demo_memory_limit_bytes', 0):
                         print(f"DEMO MODE: Per-user memory limit reached ({self.user_memory.total_mb:.0f}MB)")
+                        log_tracker.warn('crawler', f'Batas memori demo tercapai ({self.user_memory.total_mb:.0f}MB) — menghentikan audit',
+                                         crawl_id=self.crawl_id, status='demo_stopped')
                         self._demo_limit_reached = True
                         self._natural_finish = True
                         break
@@ -885,6 +939,8 @@ class WebCrawler:
                     # Check for completion
                     if self.stats['crawled'] >= self.config['max_urls']:
                         print(f"Reached maximum URLs limit ({self.config['max_urls']})")
+                        log_tracker.info('crawler', f'Batas maksimal URL tercapai ({self.config["max_urls"]})',
+                                         crawl_id=self.crawl_id, status='completed')
                         self._natural_finish = True
                         break
 
@@ -892,6 +948,8 @@ class WebCrawler:
                     link_stats = self.link_manager.get_stats()
                     if link_stats['pending'] == 0 and len(active_futures) == 0:
                         print("No more URLs to crawl")
+                        log_tracker.info('crawler', 'Semua URL sudah diperiksa — menyelesaikan audit',
+                                         crawl_id=self.crawl_id, status='completed')
                         self._natural_finish = True
                         break
 
@@ -899,6 +957,8 @@ class WebCrawler:
                     time.sleep(0.001)
 
                 except Exception as e:
+                    log_tracker.error('crawler', f'Kesalahan worker audit: {e}',
+                                      crawl_id=self.crawl_id, status='running')
                     print(f"Error in crawl worker: {e}")
                     time.sleep(1)
 
@@ -910,6 +970,8 @@ class WebCrawler:
             # Check if crawl was stopped by user (not natural finish) - skip expensive post-processing
             if not self.is_running and not self._natural_finish:
                 print("Crawl was stopped - skipping post-processing")
+                log_tracker.info('crawler', 'Audit dihentikan — melewati pemrosesan akhir',
+                                 crawl_id=self.crawl_id, status='stopped')
                 # Still save data if possible
                 if self.db_save_enabled and self.crawl_id:
                     self._save_batch_to_db(force=True)
@@ -920,6 +982,8 @@ class WebCrawler:
             # Run PageSpeed analysis if enabled
             if self.config.get('enable_pagespeed', False):
                 print("Running PageSpeed analysis...")
+                log_tracker.info('crawler', 'Menjalankan analisis PageSpeed...',
+                                 crawl_id=self.crawl_id, status='running')
                 self.is_running_pagespeed = True
                 self._run_pagespeed_analysis()
                 self.is_running_pagespeed = False
@@ -932,8 +996,12 @@ class WebCrawler:
             if self.issue_detector and self.config.get('enable_duplication_check', True):
                 if len(self.crawl_results) > 1000:
                     print(f"Skipping duplication detection for {len(self.crawl_results)} URLs (too large)")
+                    log_tracker.warn('crawler', f'Melewati deteksi duplikasi — {len(self.crawl_results)} URL terlalu banyak',
+                                     crawl_id=self.crawl_id, status='completed')
                 else:
                     print("Running duplication detection...")
+                    log_tracker.info('crawler', 'Memeriksa konten duplikat...',
+                                     crawl_id=self.crawl_id, status='completed')
                     duplication_threshold = self.config.get('duplication_threshold', 0.85)
                     self.issue_detector.detect_duplication_issues(self.crawl_results, duplication_threshold)
                     print(f"Duplication detection complete. Total issues: {len(self.issue_detector.get_issues())}")
@@ -958,8 +1026,21 @@ class WebCrawler:
         # Mark crawl as complete
         self.is_running = False
         if self._demo_limit_reached:
+            crawled = self.stats['crawled']
+            discovered = max(self.stats['discovered'], 1)
+            log_tracker.warn('crawler',
+                             f'Audit berhenti (batas demo) — {crawled} dari {discovered} halaman terindeks',
+                             crawl_id=self.crawl_id, status='demo_stopped',
+                             progress=min(100, (crawled / discovered) * 100))
             print(f"Crawl stopped (demo limit). User memory: {self.user_memory.total_mb:.0f}MB. Crawled: {self.stats['crawled']}")
         else:
+            crawled = self.stats['crawled']
+            discovered = max(self.stats['discovered'], 1)
+            issues_count = len(self.issue_detector.get_issues()) if self.issue_detector else 0
+            log_tracker.info('crawler',
+                             f'Audit selesai — {crawled} halaman terindeks, {discovered} tautan ditemukan, {issues_count} isu terdeteksi',
+                             crawl_id=self.crawl_id, status='completed',
+                             progress=100)
             print(f"Crawl completed. Discovered: {self.stats['discovered']}, Crawled: {self.stats['crawled']}")
 
     def _crawl_url(self, url, depth):
@@ -1125,9 +1206,12 @@ class WebCrawler:
             return result
 
         except Exception as e:
+            error_type = classify_fetch_error(e)
+            log_tracker.warn('crawler', f'Gagal mengakses {url} — {error_type}',
+                             crawl_id=self.crawl_id, url=url, status='running')
             return self.seo_extractor.create_empty_result(
                 url, depth, 0, str(e),
-                error_type=classify_fetch_error(e)
+                error_type=error_type
             )
 
     async def _crawl_url_with_javascript(self, url, depth):

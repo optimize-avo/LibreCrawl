@@ -18,6 +18,7 @@ from src.crawler import WebCrawler
 from src.settings_manager import SettingsManager
 from src.auth_db import init_db, create_user, authenticate_user, get_user_by_id, log_guest_crawl, get_guest_crawls_last_24h, verify_user, set_user_tier, create_verification_token, verify_token, get_user_by_email
 from src.email_service import send_verification_email, send_welcome_email
+from src.log_tracker import log_tracker
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -71,54 +72,6 @@ def generate_random_password(length=16):
     alphabet = string.ascii_letters + string.digits + string.punctuation
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-def auto_login_local_mode():
-    """Auto-login for local mode - creates or logs into 'local' admin account"""
-    import sqlite3
-    try:
-        conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'users.db'))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        # Check if 'local' user exists
-        cursor.execute('SELECT id, username, tier FROM users WHERE username = ?', ('local',))
-        user = cursor.fetchone()
-
-        if user:
-            # User exists, just log them in
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['tier'] = 'admin'
-            session.permanent = True
-            print(f"Auto-logged in as existing 'local' user (ID: {user['id']})")
-        else:
-            # Create new local user with random password
-            random_password = generate_random_password()
-            from src.auth_db import hash_password
-            password_hash = hash_password(random_password)
-
-            cursor.execute('''
-                INSERT INTO users (username, email, password_hash, verified, tier)
-                VALUES (?, ?, ?, 1, 'admin')
-            ''', ('local', 'local@localhost', password_hash))
-            conn.commit()
-
-            user_id = cursor.lastrowid
-
-            # Log in the new user
-            session['user_id'] = user_id
-            session['username'] = 'local'
-            session['tier'] = 'admin'
-            session.permanent = True
-
-            print(f"Created and auto-logged in as new 'local' admin user (ID: {user_id})")
-            print(f"Generated password: {random_password}")
-
-        conn.close()
-        return True
-    except Exception as e:
-        print(f"Error in auto_login_local_mode: {e}")
-        return False
-
 def skip_auth_login(username):
     """Skip-auth login: create user record if missing, log them in.
 
@@ -171,7 +124,7 @@ if LOCAL_MODE:
     print("LOCAL MODE ENABLED")
     print("All users will have admin tier access")
     print("No rate limits or tier restrictions")
-    print("Auto-login enabled with 'local' admin account")
+    print("Login with any username — no password required")
     print("=" * 60)
 
 if DISABLE_REGISTER:
@@ -219,11 +172,7 @@ def login_required(f):
     """Decorator to require login for routes"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # In local mode, auto-login if not already logged in
-        if LOCAL_MODE and 'user_id' not in session:
-            auto_login_local_mode()
-        elif 'user_id' not in session:
-            # Not in local mode and not logged in
+        if 'user_id' not in session:
             if request.path.startswith('/api/'):
                 return jsonify({'success': False, 'error': 'Authentication required'}), 401
             return redirect(url_for('login_page'))
@@ -244,44 +193,59 @@ def get_or_create_crawler():
     user_id = session.get('user_id')  # Get user_id from session
     tier = session.get('tier', 'guest')  # Get tier from session
 
+    current_crawl_id = session.get('current_crawl_id')
+
     with instances_lock:
         # Check if crawler exists for this session
         if session_id not in crawler_instances:
-            print(f"Creating new crawler instance for session: {session_id}, user: {user_id}, tier: {tier}")
-            crawler = WebCrawler()
-            crawler_instances[session_id] = {
-                'crawler': crawler,
-                'settings': SettingsManager(session_id=session_id, user_id=user_id, tier=tier),  # Per-user settings
-                'last_accessed': datetime.now()
-            }
-
-            # AUTO-RESTORE: If session has a current_crawl_id, load that crawl
-            current_crawl_id = session.get('current_crawl_id')
+            # Before creating new, check if any existing instance already handles this crawl_id
+            existing_instance = None
             if current_crawl_id:
-                try:
-                    from src.crawl_db import get_crawl_by_id
-                    crawl_info = get_crawl_by_id(current_crawl_id)
-                    if crawl_info and crawl_info.get('status') in ('completed', 'paused', 'failed'):
-                        # Load the crawl data
-                        if crawl_info['status'] == 'completed':
-                            success, msg = crawler.load_completed_crawl(current_crawl_id, user_id=user_id)
-                        else:
+                for sid, instance_data in list(crawler_instances.items()):
+                    c = instance_data['crawler']
+                    if hasattr(c, 'crawl_id') and c.crawl_id == current_crawl_id:
+                        existing_instance = instance_data
+                        # Rebind the existing instance to this session
+                        crawler_instances[session_id] = instance_data
+                        instance_data['last_accessed'] = datetime.now()
+                        print(f"Rebound existing crawl {current_crawl_id} from session {sid} to {session_id}")
+                        break
+
+            if not existing_instance:
+                print(f"Creating new crawler instance for session: {session_id}, user: {user_id}, tier: {tier}")
+                crawler = WebCrawler()
+                crawler_instances[session_id] = {
+                    'crawler': crawler,
+                    'settings': SettingsManager(session_id=session_id, user_id=user_id, tier=tier),  # Per-user settings
+                    'last_accessed': datetime.now()
+                }
+
+                # AUTO-RESTORE: If session has a current_crawl_id, load that crawl
+                if current_crawl_id:
+                    try:
+                        from src.crawl_db import get_crawl_by_id
+                        crawl_info = get_crawl_by_id(current_crawl_id)
+                        if crawl_info and crawl_info.get('status') in ('completed', 'paused', 'failed'):
+                            # Load the crawl data
+                            if crawl_info['status'] == 'completed':
+                                success, msg = crawler.load_completed_crawl(current_crawl_id, user_id=user_id)
+                            else:
+                                success, msg = crawler.resume_from_database(current_crawl_id, user_id=user_id, session_id=session_id)
+                            if success:
+                                print(f"Auto-restored crawl {current_crawl_id} on session init: {msg}")
+                            else:
+                                print(f"Failed to auto-restore crawl {current_crawl_id}: {msg}")
+                                session.pop('current_crawl_id', None)
+                        elif crawl_info and crawl_info.get('status') == 'running':
+                            # Crawl was running but server may have restarted - try resume
                             success, msg = crawler.resume_from_database(current_crawl_id, user_id=user_id, session_id=session_id)
-                        if success:
-                            print(f"Auto-restored crawl {current_crawl_id} on session init: {msg}")
-                        else:
-                            print(f"Failed to auto-restore crawl {current_crawl_id}: {msg}")
-                            session.pop('current_crawl_id', None)
-                    elif crawl_info and crawl_info.get('status') == 'running':
-                        # Crawl was running but server may have restarted - try resume
-                        success, msg = crawler.resume_from_database(current_crawl_id, user_id=user_id, session_id=session_id)
-                        if success:
-                            print(f"Auto-restored running crawl {current_crawl_id}: {msg}")
-                        else:
-                            session.pop('current_crawl_id', None)
-                except Exception as e:
-                    print(f"Error auto-restoring crawl: {e}")
-                    session.pop('current_crawl_id', None)
+                            if success:
+                                print(f"Auto-restored running crawl {current_crawl_id}: {msg}")
+                            else:
+                                session.pop('current_crawl_id', None)
+                    except Exception as e:
+                        print(f"Error auto-restoring crawl: {e}")
+                        session.pop('current_crawl_id', None)
         else:
             # Update last accessed time
             crawler_instances[session_id]['last_accessed'] = datetime.now()
@@ -313,6 +277,15 @@ def get_session_settings():
 
         return crawler_instances[session_id]['settings']
 
+def cleanup_old_logs():
+    """Remove log entries older than 7 days from DB."""
+    try:
+        from src.crawl_db import cleanup_old_logs as db_cleanup
+        db_cleanup(retention_days=7)
+    except Exception as e:
+        print(f"Error cleaning up old logs: {e}")
+
+
 def cleanup_old_instances():
     """Remove in-memory crawler instances that haven't been accessed in 1 hour.
 
@@ -338,6 +311,8 @@ def cleanup_old_instances():
                 continue
 
             print(f"Cleaning up idle crawler instance for session: {session_id}")
+            log_tracker.info('system', f'Membersihkan sesi idle {session_id[:8]}...',
+                              crawl_id=getattr(crawler, 'crawl_id', None))
             del crawler_instances[session_id]
 
         if sessions_to_remove:
@@ -353,6 +328,7 @@ def start_cleanup_thread():
             time.sleep(300)  # Check every 5 minutes
             try:
                 cleanup_old_instances()
+                cleanup_old_logs()
             except Exception as e:
                 print(f"Error in cleanup thread: {e}")
 
@@ -543,13 +519,12 @@ def generate_issues_json_export(issues):
 
 @app.route('/login')
 def login_page():
-    # In local mode, auto-login and redirect to index
-    if LOCAL_MODE:
-        auto_login_local_mode()
-        return redirect(url_for('index'))
     # Redirect to app if already logged in
     if 'user_id' in session:
         return redirect(url_for('index'))
+    # In local mode, use skip-auth login (username only, no password)
+    if LOCAL_MODE:
+        return render_template('login.html', registration_disabled=True, guest_disabled=True, skip_auth=True, local_mode=True)
     return render_template('login.html', registration_disabled=DISABLE_REGISTER, guest_disabled=DISABLE_GUEST, skip_auth=SKIP_AUTH)
 
 @app.route('/register')
@@ -557,6 +532,8 @@ def register_page():
     # Redirect to app if already logged in
     if 'user_id' in session:
         return redirect(url_for('index'))
+    if LOCAL_MODE:
+        return redirect(url_for('login_page'))
     return render_template('register.html', registration_disabled=DISABLE_REGISTER)
 
 @app.route('/verify')
@@ -665,7 +642,7 @@ def login():
 
     # Dangerously skip auth: accept any username with no password.
     # Username is only used to separate per-user sessions.
-    if SKIP_AUTH:
+    if LOCAL_MODE or SKIP_AUTH:
         if not username:
             return jsonify({'success': False, 'message': 'Username required'})
         if len(username) > 50:
@@ -737,13 +714,11 @@ def user_info():
 
 @app.route('/')
 def index():
-    # In local mode, auto-login if not already logged in
-    if LOCAL_MODE and 'user_id' not in session:
-        auto_login_local_mode()
-    elif 'user_id' not in session:
-        # Not in local mode and not logged in, redirect to login
+    if 'user_id' not in session:
         return redirect(url_for('login_page'))
-    return render_template('index.html')
+    from src.auth_db import get_user_by_id
+    user = get_user_by_id(session.get('user_id'))
+    return render_template('index.html', user=user)
 
 @app.route('/dashboard')
 @login_required
@@ -766,18 +741,122 @@ def compare_page():
     user = get_user_by_id(session.get('user_id'))
     return render_template('compare.html', user=user)
 
-@app.route('/compare')
-@login_required
-def compare_page():
-    """Compare page — compare two crawls"""
-    user = get_user_by_id(session.get('user_id'))
-    return render_template('compare.html', user=user)
-
 @app.route('/debug/memory')
 @login_required
 def debug_memory_page():
     """Debug page with nice UI for memory monitoring"""
     return render_template('debug_memory.html')
+
+# ── Log Tracker Routes ──────────────────────────────────────────────
+
+@app.route('/logs')
+@login_required
+def logs_page():
+    """Log tracker page — real-time view of all crawl processes."""
+    return render_template('logs.html')
+
+
+@app.route('/api/logs')
+@login_required
+def get_logs():
+    """Get logs with optional filters and pagination (newest first)."""
+    crawl_id = request.args.get('crawl_id', type=int)
+    level = request.args.get('level')
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+
+    result = log_tracker.get_logs(
+        crawl_id=crawl_id,
+        level=level,
+        page=page,
+        per_page=per_page,
+    )
+    return jsonify({'success': True, **result})
+
+
+@app.route('/api/logs/stream')
+@login_required
+def logs_stream():
+    """SSE endpoint for real-time log streaming."""
+    q = log_tracker.subscribe()
+
+    def event_stream():
+        try:
+            while True:
+                while q:
+                    entry = q.popleft()
+                    yield f'data: {json.dumps(entry)}\n\n'
+                time.sleep(0.5)
+        except GeneratorExit:
+            pass
+        finally:
+            log_tracker.unsubscribe(q)
+
+    return app.response_class(
+        event_stream(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+        },
+    )
+
+
+@app.route('/api/logs/active')
+@login_required
+def logs_active():
+    """Get summary of all active crawls for the tracker page."""
+    from src.crawl_db import get_crawl_by_id
+
+    # 1. Check running crawler instances
+    crawl_ids = set()
+    enriched = []
+    with instances_lock:
+        for sid, inst in crawler_instances.items():
+            c = inst['crawler']
+            if hasattr(c, 'is_running') and c.is_running and hasattr(c, 'crawl_id') and c.crawl_id:
+                cid = c.crawl_id
+                if cid not in crawl_ids:
+                    crawl_ids.add(cid)
+                    last_msg = ''
+                    try:
+                        info = get_crawl_by_id(cid)
+                    except Exception:
+                        info = None
+                    enriched.append({
+                        'crawl_id': cid,
+                        'base_url': getattr(c, 'base_url', ''),
+                        'base_domain': getattr(c, 'base_domain', ''),
+                        'status': 'running',
+                        'progress': round((getattr(c, 'stats', {}) or {}).get('crawled', 0) / max((getattr(c, 'stats', {}) or {}).get('discovered', 1), 1) * 100, 1),
+                        'urls_crawled': (getattr(c, 'stats', {}) or {}).get('crawled', 0),
+                        'urls_discovered': (getattr(c, 'stats', {}) or {}).get('discovered', 0),
+                        'last_message': f'Memeriksa {getattr(c, "current_crawl_url", "")}' if getattr(c, 'current_crawl_url', None) else 'Audit berjalan',
+                        'last_timestamp': '',
+                        'source': 'crawler',
+                        'url': getattr(c, 'base_url', ''),
+                    })
+
+    # 2. Also check log-based active crawls (catch any not in memory)
+    log_summary = log_tracker.get_active_crawls_summary()
+    for s in log_summary:
+        cid = s['crawl_id']
+        if cid not in crawl_ids:
+            crawl_ids.add(cid)
+            try:
+                info = get_crawl_by_id(cid)
+                if info:
+                    s['base_url'] = info.get('base_url')
+                    s['base_domain'] = info.get('base_domain')
+                    s['urls_crawled'] = info.get('urls_crawled', 0)
+                    s['urls_discovered'] = info.get('urls_discovered', 0)
+                    s['max_depth'] = info.get('max_depth_reached', 0)
+            except Exception:
+                pass
+            enriched.append(s)
+
+    return jsonify({'success': True, 'crawls': enriched})
+
 
 @app.route('/api/start_crawl', methods=['POST'])
 @login_required
@@ -825,13 +904,17 @@ def start_crawl():
         crawler.config['demo_memory_limit_bytes'] = int(1.5 * 1024 * 1024 * 1024)  # 1.5GB
 
     # Pass user_id and session_id for database persistence
-    success, message = crawler.start_crawl(url, user_id=user_id, session_id=session_id)
+    owner_username = session.get('username')
+    success, message = crawler.start_crawl(url, user_id=user_id, session_id=session_id, owner_username=owner_username)
 
     # Store crawl_id in session
     if success and crawler.crawl_id:
         session['current_crawl_id'] = crawler.crawl_id
         # Also log to old crawl_history for compatibility
         log_crawl_start(user_id, url)
+    else:
+        log_tracker.error('system', f'Gagal memulai audit {url}: {message}',
+                          url=url)
 
     return jsonify({'success': success, 'message': message, 'crawl_id': crawler.crawl_id})
 
@@ -839,7 +922,10 @@ def start_crawl():
 @login_required
 def stop_crawl():
     crawler = get_or_create_crawler()
+    crawl_id = getattr(crawler, 'crawl_id', None)
     success, message = crawler.stop_crawl()
+    log_tracker.info('system', f'Menghentikan audit: {message}',
+                     crawl_id=crawl_id, status='stopped')
     return jsonify({'success': success, 'message': message})
 
 @app.route('/api/crawl_status')
@@ -1102,7 +1188,10 @@ def update_crawler_settings():
 def pause_crawl():
     try:
         crawler = get_or_create_crawler()
+        crawl_id = getattr(crawler, 'crawl_id', None)
         success, message = crawler.pause_crawl()
+        log_tracker.info('system', f'Menjeda audit: {message}',
+                         crawl_id=crawl_id, status='paused')
         return jsonify({'success': success, 'message': message})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -1112,7 +1201,10 @@ def pause_crawl():
 def resume_crawl():
     try:
         crawler = get_or_create_crawler()
+        crawl_id = getattr(crawler, 'crawl_id', None)
         success, message = crawler.resume_crawl()
+        log_tracker.info('system', f'Melanjutkan audit: {message}',
+                         crawl_id=crawl_id, status='running')
         return jsonify({'success': success, 'message': message})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -1120,17 +1212,27 @@ def resume_crawl():
 @app.route('/api/crawls/list')
 @login_required
 def list_crawls():
-    """Get all crawls for current user"""
+    """Get all crawls (optionally filter by owner via ?mine=1)"""
     try:
-        user_id = session.get('user_id')
         from src.crawl_db import get_user_crawls, get_crawl_count
 
         limit = request.args.get('limit', 50, type=int)
         offset = request.args.get('offset', 0, type=int)
         status_filter = request.args.get('status')
+        mine_only = request.args.get('mine', '').lower() in ('1', 'true')
 
+        user_id = session.get('user_id') if mine_only else None
         crawls = get_user_crawls(user_id, limit=limit, offset=offset, status_filter=status_filter)
-        total_count = get_crawl_count(user_id)
+
+        # Count all or user-specific
+        if user_id is not None:
+            total_count = get_crawl_count(user_id)
+        else:
+            total_count = len(crawls)
+            if len(crawls) >= limit:
+                from src.crawl_db import get_db
+                with get_db() as conn:
+                    total_count = conn.cursor().execute('SELECT COUNT(*) FROM crawls').fetchone()[0]
 
         return jsonify({
             'success': True,
@@ -1160,9 +1262,10 @@ def my_active_crawls():
 @app.route('/api/crawls/history')
 @login_required
 def crawl_history():
-    """Get crawls grouped by domain"""
+    """Get all crawls grouped by domain (across all users)"""
     try:
-        user_id = session.get('user_id')
+        mine_only = request.args.get('mine', '').lower() in ('1', 'true')
+        user_id = session.get('user_id') if mine_only else None
         from src.crawl_db import get_crawl_history
 
         domains = get_crawl_history(user_id=user_id)
@@ -1195,6 +1298,10 @@ def reconnect_crawl(crawl_id):
             for sid, instance_data in crawler_instances.items():
                 crawler = instance_data['crawler']
                 if crawler.crawl_id == crawl_id:
+                    # Verify ownership before rebinding
+                    if user_id and crawl_info.get('user_id') != user_id:
+                        return jsonify({'success': False, 'error': 'Unauthorized - you don\'t own this crawl'}), 403
+
                     # Found in-memory instance — bind to current session
                     session_id = session.get('session_id')
                     if not session_id:
@@ -1211,6 +1318,8 @@ def reconnect_crawl(crawl_id):
 
                     # Load existing data for initial response
                     status_data = crawler.get_status()
+                    log_tracker.info('system', f'Terhubung kembali ke audit #{crawl_id}',
+                                     crawl_id=crawl_id, status='running')
                     return jsonify({
                         'success': True,
                         'message': 'Reconnected to active crawl',
@@ -1222,6 +1331,8 @@ def reconnect_crawl(crawl_id):
         success, message = crawler.resume_from_database(crawl_id, user_id=user_id)
 
         if success:
+            log_tracker.info('system', f'Memulihkan audit #{crawl_id} dari database: {message}',
+                             crawl_id=crawl_id, status='running')
             return jsonify({
                 'success': True,
                 'message': message,
@@ -1317,19 +1428,14 @@ def save_crawl_name(crawl_id):
 @app.route('/api/crawls/<int:crawl_id>')
 @login_required
 def get_crawl(crawl_id):
-    """Get complete crawl data by ID"""
+    """Get complete crawl data by ID (any user can view completed crawls)"""
     try:
-        user_id = session.get('user_id')
         from src.crawl_db import get_crawl_by_id, load_crawled_urls, load_crawl_links, load_crawl_issues
 
         # Get crawl metadata
         crawl = get_crawl_by_id(crawl_id)
         if not crawl:
             return jsonify({'success': False, 'error': 'Crawl not found'}), 404
-
-        # Check ownership (guests have user_id = None)
-        if user_id and crawl.get('user_id') != user_id:
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
         # Load all data
         urls = load_crawled_urls(crawl_id)
@@ -1701,9 +1807,13 @@ def recover_crashed_crawls():
                                 'last_accessed': datetime.now()
                             }
                         recovered_count += 1
+                        log_tracker.info('system', f'Pemulihan crash: audit {crawl["base_url"]} dilanjutkan',
+                                          crawl_id=crawl['id'], status='running')
                         print(f"  Resumed: {crawl['base_url']} (ID: {crawl['id']}) - {message}")
                     else:
                         set_crawl_status(crawl['id'], 'failed')
+                        log_tracker.error('system', f'Pemulihan crash gagal: {crawl["base_url"]} — {message}',
+                                           crawl_id=crawl['id'], status='failed')
                         print(f"  Failed to resume: {crawl['base_url']} (ID: {crawl['id']}) - {message}")
                 except Exception as e:
                     set_crawl_status(crawl['id'], 'failed')
@@ -1720,6 +1830,7 @@ def graceful_shutdown(signum, frame):
     print("GRACEFUL SHUTDOWN")
     print("=" * 60)
     print("Saving all active crawls...")
+    log_tracker.info('system', 'Server dimatikan — menyimpan semua audit...')
 
     try:
         with instances_lock:
@@ -1727,15 +1838,16 @@ def graceful_shutdown(signum, frame):
                 crawler = instance_data['crawler']
                 if crawler.is_running and crawler.crawl_id and crawler.db_save_enabled:
                     print(f"  → Saving crawl {crawler.crawl_id}...")
+                    log_tracker.info('system', f'Menyimpan audit {crawler.crawl_id} sebelum shutdown',
+                                      crawl_id=crawler.crawl_id)
                     try:
                         crawler._save_batch_to_db(force=True)
                         crawler._save_queue_checkpoint()
-                        from src.crawl_db import set_crawl_status
-                        set_crawl_status(crawler.crawl_id, 'paused')
                     except Exception as e:
                         print(f"    Error saving crawl {crawler.crawl_id}: {e}")
 
         print("All crawls saved successfully")
+        log_tracker.info('system', 'Semua audit tersimpan — sampai jumpa')
         print("=" * 60)
     except Exception as e:
         print(f"Error during shutdown: {e}")
@@ -1758,6 +1870,8 @@ def main():
     start_cleanup_thread()
 
     port = int(os.environ.get('PORT', 5001))
+    log_tracker.seed_from_db()
+    log_tracker.info('system', f'Server berjalan di port {port}')
 
     print("=" * 60)
     print("LibreCrawl - SEO Spider")

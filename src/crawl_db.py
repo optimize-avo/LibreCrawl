@@ -58,9 +58,17 @@ def init_crawl_tables():
                 can_resume BOOLEAN DEFAULT 1,
                 resume_checkpoint TEXT,
 
+                owner_username TEXT,
+
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         ''')
+
+        # Migration: add owner_username column if missing
+        cursor.execute("PRAGMA table_info(crawls)")
+        columns = [col['name'] for col in cursor.fetchall()]
+        if 'owner_username' not in columns:
+            cursor.execute("ALTER TABLE crawls ADD COLUMN owner_username TEXT")
 
         # Crawled URLs table
         cursor.execute('''
@@ -180,6 +188,26 @@ def init_crawl_tables():
             )
         ''')
 
+        # Logs table for persistent log tracking
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS crawl_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                crawl_id INTEGER,
+                timestamp TEXT NOT NULL,
+                timestamp_epoch REAL NOT NULL,
+                level TEXT NOT NULL DEFAULT 'INFO',
+                source TEXT DEFAULT 'system',
+                message TEXT NOT NULL,
+                url TEXT,
+                progress REAL,
+                status TEXT,
+                FOREIGN KEY (crawl_id) REFERENCES crawls(id) ON DELETE SET NULL
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_crawl_logs_crawl ON crawl_logs(crawl_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_crawl_logs_epoch ON crawl_logs(timestamp_epoch)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_crawl_logs_level ON crawl_logs(level)')
+
         # Create indexes for performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_crawls_user_status ON crawls(user_id, status)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_crawls_session ON crawls(session_id)')
@@ -196,7 +224,7 @@ def init_crawl_tables():
 
         print("Crawl persistence tables initialized successfully")
 
-def create_crawl(user_id, session_id, base_url, base_domain, config_snapshot):
+def create_crawl(user_id, session_id, base_url, base_domain, config_snapshot, owner_username=None):
     """
     Create a new crawl record
     Returns the crawl_id
@@ -205,12 +233,12 @@ def create_crawl(user_id, session_id, base_url, base_domain, config_snapshot):
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO crawls (user_id, session_id, base_url, base_domain, config_snapshot, status)
-                VALUES (?, ?, ?, ?, ?, 'running')
-            ''', (user_id, session_id, base_url, base_domain, json.dumps(config_snapshot)))
+                INSERT INTO crawls (user_id, session_id, base_url, base_domain, config_snapshot, status, owner_username)
+                VALUES (?, ?, ?, ?, ?, 'running', ?)
+            ''', (user_id, session_id, base_url, base_domain, json.dumps(config_snapshot), owner_username))
 
             crawl_id = cursor.lastrowid
-            print(f"Created new crawl record: ID={crawl_id}, URL={base_url}")
+            print(f"Created new crawl record: ID={crawl_id}, URL={base_url} by {owner_username}")
             return crawl_id
     except Exception as e:
         print(f"Error creating crawl: {e}")
@@ -466,7 +494,9 @@ def get_crawl_by_id(crawl_id):
         return None
 
 def get_user_crawls(user_id, limit=50, offset=0, status_filter=None):
-    """Get all crawls for a user with issue counts"""
+    """Get all crawls (optionally filtered by user_id for active/reconnect).
+    If user_id is None, returns all crawls across all users.
+    """
     try:
         with get_db() as conn:
             cursor = conn.cursor()
@@ -477,12 +507,15 @@ def get_user_crawls(user_id, limit=50, offset=0, status_filter=None):
                     COUNT(DISTINCT ci.id) as issues_count
                 FROM crawls c
                 LEFT JOIN crawl_issues ci ON ci.crawl_id = c.id
-                WHERE c.user_id = ?
             '''
-            params = [user_id]
+            params = []
+
+            if user_id is not None:
+                query += ' WHERE c.user_id = ?'
+                params.append(user_id)
 
             if status_filter:
-                query += ' AND c.status = ?'
+                query += ' AND c.status = ?' if user_id is not None else ' WHERE c.status = ?'
                 params.append(status_filter)
 
             query += ' GROUP BY c.id ORDER BY c.started_at DESC LIMIT ? OFFSET ?'
@@ -612,7 +645,7 @@ def get_crashed_crawls():
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT * FROM crawls
-                WHERE status = 'running'
+                WHERE status IN ('running', 'paused')
                 ORDER BY started_at DESC
             ''')
 
@@ -634,7 +667,7 @@ def get_user_active_crawls(user_id):
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT id, base_url, base_domain, status, started_at,
-                       urls_discovered, max_depth_reached
+                       urls_discovered, max_depth_reached, user_id, owner_username
                 FROM crawls
                 WHERE user_id = ? AND status IN ('running', 'paused')
                 ORDER BY started_at DESC
@@ -723,8 +756,9 @@ def get_crawl_count(user_id):
 
 def get_crawl_history(user_id=None):
     """
-    Get crawls grouped by base_domain with issue counts.
+    Get all crawls grouped by base_domain with issue counts (across all users).
     Returns list of domain groups, each with a list of crawls.
+    If user_id is set, only returns crawls owned by that user.
     """
     try:
         with get_db() as conn:
@@ -734,13 +768,13 @@ def get_crawl_history(user_id=None):
                 SELECT
                     c.id, c.crawl_name, c.base_url, c.base_domain, c.status,
                     c.started_at, c.completed_at, c.urls_crawled,
-                    c.user_id,
+                    c.user_id, c.owner_username,
                     COUNT(DISTINCT ci.id) as issues_count
                 FROM crawls c
                 LEFT JOIN crawl_issues ci ON ci.crawl_id = c.id
             '''
             params = []
-            if user_id:
+            if user_id is not None:
                 query += ' WHERE c.user_id = ?'
                 params.append(user_id)
             query += ' GROUP BY c.id ORDER BY c.base_domain, c.started_at DESC'
@@ -919,3 +953,161 @@ def get_database_size_mb():
     except Exception as e:
         print(f"Error getting database size: {e}")
         return 0
+
+
+def save_logs_batch(log_entries):
+    """Batch insert log entries for persistence."""
+    if not log_entries:
+        return
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            rows = []
+            for e in log_entries:
+                rows.append((
+                    e.get('crawl_id'),
+                    e.get('timestamp', ''),
+                    e.get('timestamp_epoch', time.time()),
+                    e.get('level', 'INFO'),
+                    e.get('source', 'system'),
+                    e.get('message', ''),
+                    e.get('url'),
+                    e.get('progress'),
+                    e.get('status'),
+                ))
+            cursor.executemany('''
+                INSERT INTO crawl_logs (crawl_id, timestamp, timestamp_epoch, level, source, message, url, progress, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', rows)
+    except Exception as e:
+        print(f"Error saving logs batch: {e}")
+
+
+def get_historical_logs(since=None, crawl_id=None, level=None, limit=1000, offset=0):
+    """Load historical logs from DB with optional filters."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            conditions = []
+            params = []
+
+            if since is not None:
+                conditions.append('timestamp_epoch > ?')
+                params.append(since)
+            if crawl_id is not None:
+                conditions.append('crawl_id = ?')
+                params.append(crawl_id)
+            if level is not None:
+                levels = [l.strip() for l in level.split(',')]
+                placeholders = ','.join(['?' for _ in levels])
+                conditions.append(f'level IN ({placeholders})')
+                params.extend(levels)
+
+            where_clause = (' WHERE ' + ' AND '.join(conditions)) if conditions else ''
+
+            # Count total matching
+            cursor.execute(f'SELECT COUNT(*) as cnt FROM crawl_logs{where_clause}', params)
+            total = cursor.fetchone()['cnt']
+
+            # Fetch page
+            cursor.execute(
+                f'SELECT * FROM crawl_logs{where_clause} ORDER BY id DESC LIMIT ? OFFSET ?',
+                params + [limit, offset]
+            )
+            rows = cursor.fetchall()
+
+            logs = []
+            for row in rows:
+                logs.append({
+                    'id': row['id'],
+                    'crawl_id': row['crawl_id'],
+                    'timestamp': row['timestamp'],
+                    'timestamp_epoch': row['timestamp_epoch'],
+                    'level': row['level'],
+                    'source': row['source'],
+                    'message': row['message'],
+                    'url': row['url'],
+                    'progress': row['progress'],
+                    'status': row['status'],
+                })
+
+            return {'logs': logs, 'total': total, 'offset': offset, 'limit': limit}
+    except Exception as e:
+        print(f"Error loading historical logs: {e}")
+        return {'logs': [], 'total': 0, 'offset': offset, 'limit': limit}
+
+
+def get_all_crawls_for_logs(limit=100):
+    """Fetch all historical crawls formatted for log display."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, base_url, base_domain, status, urls_discovered, urls_crawled,
+                       started_at, completed_at, crawl_name
+                FROM crawls
+                WHERE status != 'running'
+                ORDER BY started_at DESC
+                LIMIT ?
+            ''', (limit,))
+            rows = cursor.fetchall()
+            results = []
+            for r in rows:
+                started_epoch = 0
+                if r['started_at']:
+                    try:
+                        dt = datetime.strptime(r['started_at'], '%Y-%m-%d %H:%M:%S')
+                        started_epoch = dt.timestamp()
+                    except Exception:
+                        started_epoch = 0
+                completed_epoch = 0
+                if r['completed_at']:
+                    try:
+                        dt = datetime.strptime(r['completed_at'], '%Y-%m-%d %H:%M:%S')
+                        completed_epoch = dt.timestamp()
+                    except Exception:
+                        completed_epoch = 0
+                results.append({
+                    'crawl_id': r['id'],
+                    'base_url': r['base_url'],
+                    'base_domain': r['base_domain'],
+                    'status': r['status'],
+                    'urls_discovered': r['urls_discovered'] or 0,
+                    'urls_crawled': r['urls_crawled'] or 0,
+                    'started_at': r['started_at'],
+                    'completed_at': r['completed_at'],
+                    'crawl_name': r['crawl_name'],
+                    'started_epoch': started_epoch,
+                    'completed_epoch': completed_epoch,
+                })
+            return results
+    except Exception as e:
+        print(f"Error fetching crawls for logs: {e}")
+        return []
+
+
+def cleanup_crawl_logs():
+    """Remove old history entries before re-seeding to avoid duplicates."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM crawl_logs WHERE source='history'")
+            deleted = cursor.rowcount
+            if deleted:
+                print(f"Cleaned up {deleted} old history log entries")
+    except Exception as e:
+        print(f"Error cleaning up old history logs: {e}")
+
+def cleanup_old_logs(retention_days=7):
+    """Delete logs older than retention_days to limit DB growth."""
+    try:
+        cutoff = time.time() - (retention_days * 86400)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM crawl_logs WHERE timestamp_epoch < ?', (cutoff,))
+            deleted = cursor.rowcount
+            if deleted:
+                print(f"Cleaned up {deleted} old log entries (> {retention_days} days)")
+    except Exception as e:
+        print(f"Error cleaning up old logs: {e}")
