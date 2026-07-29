@@ -11,6 +11,8 @@ from contextlib import contextmanager
 
 # Database file location (same as auth database) - stored in data/ for Docker volume persistence
 import os
+import logging
+logger = logging.getLogger(__name__)
 DB_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'users.db')
 
 @contextmanager
@@ -222,7 +224,7 @@ def init_crawl_tables():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_crawl_issues_category ON crawl_issues(crawl_id, category)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_crawl_queue_crawl ON crawl_queue(crawl_id)')
 
-        print("Crawl persistence tables initialized successfully")
+        logger.info("Crawl persistence tables initialized successfully")
 
 def create_crawl(user_id, session_id, base_url, base_domain, config_snapshot, owner_username=None):
     """
@@ -238,10 +240,10 @@ def create_crawl(user_id, session_id, base_url, base_domain, config_snapshot, ow
             ''', (user_id, session_id, base_url, base_domain, json.dumps(config_snapshot), owner_username))
 
             crawl_id = cursor.lastrowid
-            print(f"Created new crawl record: ID={crawl_id}, URL={base_url} by {owner_username}")
+            logger.info(f"Created new crawl record: ID={crawl_id}, URL={base_url} by {owner_username}")
             return crawl_id
     except Exception as e:
-        print(f"Error creating crawl: {e}")
+        logger.error(f"Error creating crawl: {e}")
         return None
 
 def update_crawl_stats(crawl_id, discovered=None, crawled=None, max_depth=None, peak_memory_mb=None, estimated_size_mb=None):
@@ -277,7 +279,7 @@ def update_crawl_stats(crawl_id, discovered=None, crawled=None, max_depth=None, 
 
             return True
     except Exception as e:
-        print(f"Error updating crawl stats: {e}")
+        logger.error(f"Error updating crawl stats: {e}")
         return False
 
 def save_url_batch(crawl_id, urls):
@@ -344,11 +346,11 @@ def save_url_batch(crawl_id, urls):
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', rows)
 
-            print(f"Saved {len(urls)} URLs to database for crawl {crawl_id}")
+            logger.debug(f"Saved {len(urls)} URLs to database for crawl {crawl_id}")
             return True
 
     except Exception as e:
-        print(f"Error saving URL batch: {e}")
+        logger.error(f"Error saving URL batch: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -383,11 +385,11 @@ def save_links_batch(crawl_id, links):
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', rows)
 
-            print(f"Saved {len(links)} links to database for crawl {crawl_id}")
+            logger.debug(f"Saved {len(links)} links to database for crawl {crawl_id}")
             return True
 
     except Exception as e:
-        print(f"Error saving links batch: {e}")
+        logger.error(f"Error saving links batch: {e}")
         return False
 
 def save_issues_batch(crawl_id, issues):
@@ -417,11 +419,11 @@ def save_issues_batch(crawl_id, issues):
                 ) VALUES (?, ?, ?, ?, ?, ?)
             ''', rows)
 
-            print(f"Saved {len(issues)} issues to database for crawl {crawl_id}")
+            logger.debug(f"Saved {len(issues)} issues to database for crawl {crawl_id}")
             return True
 
     except Exception as e:
-        print(f"Error saving issues batch: {e}")
+        logger.error(f"Error saving issues batch: {e}")
         return False
 
 def save_checkpoint(crawl_id, checkpoint_data):
@@ -437,7 +439,7 @@ def save_checkpoint(crawl_id, checkpoint_data):
 
             return True
     except Exception as e:
-        print(f"Error saving checkpoint: {e}")
+        logger.error(f"Error saving checkpoint: {e}")
         return False
 
 def set_crawl_status(crawl_id, status):
@@ -462,11 +464,11 @@ def set_crawl_status(crawl_id, status):
                     WHERE id = ?
                 ''', (status, crawl_id))
 
-            print(f"Updated crawl {crawl_id} status to: {status}")
+            logger.debug(f"Updated crawl {crawl_id} status to: {status}")
             return True
 
     except Exception as e:
-        print(f"Error setting crawl status: {e}")
+        logger.error(f"Error setting crawl status: {e}")
         return False
 
 def get_crawl_by_id(crawl_id):
@@ -490,7 +492,7 @@ def get_crawl_by_id(crawl_id):
             return None
 
     except Exception as e:
-        print(f"Error fetching crawl: {e}")
+        logger.error(f"Error fetching crawl: {e}")
         return None
 
 def get_user_crawls(user_id, limit=50, offset=0, status_filter=None):
@@ -533,7 +535,7 @@ def get_user_crawls(user_id, limit=50, offset=0, status_filter=None):
             return crawls
 
     except Exception as e:
-        print(f"Error fetching user crawls: {e}")
+        logger.error(f"Error fetching user crawls: {e}")
         return []
 
 def load_crawled_urls(crawl_id, limit=None, offset=0):
@@ -569,7 +571,7 @@ def load_crawled_urls(crawl_id, limit=None, offset=0):
             return urls
 
     except Exception as e:
-        print(f"Error loading crawled URLs: {e}")
+        logger.error(f"Error loading crawled URLs: {e}")
         return []
 
 def load_crawl_links(crawl_id, limit=None, offset=0):
@@ -590,7 +592,7 @@ def load_crawl_links(crawl_id, limit=None, offset=0):
             return [dict(row) for row in cursor.fetchall()]
 
     except Exception as e:
-        print(f"Error loading links: {e}")
+        logger.error(f"Error loading links: {e}")
         return []
 
 def load_crawl_issues(crawl_id, limit=None, offset=0):
@@ -611,7 +613,7 @@ def load_crawl_issues(crawl_id, limit=None, offset=0):
             return [dict(row) for row in cursor.fetchall()]
 
     except Exception as e:
-        print(f"Error loading issues: {e}")
+        logger.error(f"Error loading issues: {e}")
         return []
 
 def get_resume_data(crawl_id):
@@ -632,10 +634,10 @@ def delete_crawl(crawl_id):
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM crawls WHERE id = ?', (crawl_id,))
-            print(f"Deleted crawl {crawl_id} and all associated data")
+            logger.info(f"Deleted crawl {crawl_id} and all associated data")
             return True
     except Exception as e:
-        print(f"Error deleting crawl: {e}")
+        logger.error(f"Error deleting crawl: {e}")
         return False
 
 def get_crashed_crawls():
@@ -657,7 +659,7 @@ def get_crashed_crawls():
             return crawls
 
     except Exception as e:
-        print(f"Error finding crashed crawls: {e}")
+        logger.error(f"Error finding crashed crawls: {e}")
         return []
 
 def get_user_active_crawls(user_id):
@@ -692,7 +694,7 @@ def get_user_active_crawls(user_id):
             return crawls
 
     except Exception as e:
-        print(f"Error finding active crawls: {e}")
+        logger.error(f"Error finding active crawls: {e}")
         return []
 
 def fix_stopped_to_completed():
@@ -701,6 +703,9 @@ def fix_stopped_to_completed():
     Before the _natural_finish fix, session timeouts would call stop_crawl()
     during post-processing, overwriting 'completed' with 'stopped'. This
     migration corrects those records on startup.
+
+    Only marks as 'completed' if urls_crawled >= urls_discovered (all discovered
+    URLs were processed), to avoid false-positives on user-stopped crawls.
     """
     try:
         with get_db() as conn:
@@ -709,18 +714,15 @@ def fix_stopped_to_completed():
                 UPDATE crawls
                 SET status = 'completed'
                 WHERE status = 'stopped'
-                AND id IN (
-                    SELECT crawl_id FROM crawl_links
-                    GROUP BY crawl_id
-                    HAVING COUNT(*) > 0
-                )
+                AND urls_crawled > 0
+                AND urls_crawled >= urls_discovered
             ''')
             fixed = cursor.rowcount
             if fixed > 0:
-                print(f"Migration: fixed {fixed} crawls from 'stopped' → 'completed'")
+                logger.info(f"Migration: fixed {fixed} crawls from 'stopped' → 'completed'")
             return fixed
     except Exception as e:
-        print(f"Error fixing stopped crawls: {e}")
+        logger.error(f"Error fixing stopped crawls: {e}")
         return 0
 
 def cleanup_crawl_logs(crawl_id):
@@ -731,7 +733,7 @@ def cleanup_crawl_logs(crawl_id):
             cursor.execute('DELETE FROM crawl_logs WHERE crawl_id = ?', (crawl_id,))
             return cursor.rowcount
     except Exception as e:
-        print(f"Error cleaning up crawl logs: {e}")
+        logger.error(f"Error cleaning up crawl logs: {e}")
         return 0
 
 def cleanup_old_crawls(days=90):
@@ -746,11 +748,11 @@ def cleanup_old_crawls(days=90):
             ''', (days,))
 
             deleted = cursor.rowcount
-            print(f"Cleaned up {deleted} old crawls")
+            logger.info(f"Cleaned up {deleted} old crawls")
             return deleted
 
     except Exception as e:
-        print(f"Error cleaning up old crawls: {e}")
+        logger.error(f"Error cleaning up old crawls: {e}")
         return 0
 
 def get_crawl_count(user_id):
@@ -762,7 +764,7 @@ def get_crawl_count(user_id):
             result = cursor.fetchone()
             return result['count'] if result else 0
     except Exception as e:
-        print(f"Error getting crawl count: {e}")
+        logger.error(f"Error getting crawl count: {e}")
         return 0
 
 def get_crawl_history(user_id=None):
@@ -811,7 +813,7 @@ def get_crawl_history(user_id=None):
             return result
 
     except Exception as e:
-        print(f"Error getting crawl history: {e}")
+        logger.error(f"Error getting crawl history: {e}")
         return []
 
 
@@ -922,7 +924,7 @@ def compare_crawls(crawl_id_a, crawl_id_b):
             }
 
     except Exception as e:
-        print(f"Error comparing crawls: {e}")
+        logger.error(f"Error comparing crawls: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -936,8 +938,34 @@ def update_crawl_name(crawl_id, crawl_name):
             cursor.execute('UPDATE crawls SET crawl_name = ? WHERE id = ?', (crawl_name, crawl_id))
             return True
     except Exception as e:
-        print(f"Error updating crawl name: {e}")
+        logger.error(f"Error updating crawl name: {e}")
         return False
+
+
+def count_crawled_urls(crawl_id):
+    """Count total crawled URLs for a crawl"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) as count FROM crawled_urls WHERE crawl_id = ?', (crawl_id,))
+            result = cursor.fetchone()
+            return result['count'] if result else 0
+    except Exception as e:
+        logger.error(f"Error counting crawled URLs: {e}")
+        return 0
+
+
+def count_crawl_links(crawl_id):
+    """Count total links for a crawl"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) as count FROM crawl_links WHERE crawl_id = ?', (crawl_id,))
+            result = cursor.fetchone()
+            return result['count'] if result else 0
+    except Exception as e:
+        logger.error(f"Error counting crawl links: {e}")
+        return 0
 
 
 def get_crawl_issues_count(crawl_id):
@@ -949,7 +977,7 @@ def get_crawl_issues_count(crawl_id):
             result = cursor.fetchone()
             return result['count'] if result else 0
     except Exception as e:
-        print(f"Error getting issues count: {e}")
+        logger.error(f"Error getting issues count: {e}")
         return 0
 
 
@@ -962,7 +990,7 @@ def get_database_size_mb():
             return round(size_bytes / (1024 * 1024), 2)
         return 0
     except Exception as e:
-        print(f"Error getting database size: {e}")
+        logger.error(f"Error getting database size: {e}")
         return 0
 
 
@@ -991,7 +1019,7 @@ def save_logs_batch(log_entries):
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', rows)
     except Exception as e:
-        print(f"Error saving logs batch: {e}")
+        logger.error(f"Error saving logs batch: {e}")
 
 
 def get_historical_logs(since=None, crawl_id=None, level=None, limit=1000, offset=0):
@@ -1045,7 +1073,7 @@ def get_historical_logs(since=None, crawl_id=None, level=None, limit=1000, offse
 
             return {'logs': logs, 'total': total, 'offset': offset, 'limit': limit}
     except Exception as e:
-        print(f"Error loading historical logs: {e}")
+        logger.error(f"Error loading historical logs: {e}")
         return {'logs': [], 'total': 0, 'offset': offset, 'limit': limit}
 
 
@@ -1094,7 +1122,7 @@ def get_all_crawls_for_logs(limit=100):
                 })
             return results
     except Exception as e:
-        print(f"Error fetching crawls for logs: {e}")
+        logger.error(f"Error fetching crawls for logs: {e}")
         return []
 
 
@@ -1106,9 +1134,9 @@ def cleanup_crawl_logs():
             cursor.execute("DELETE FROM crawl_logs WHERE source='history'")
             deleted = cursor.rowcount
             if deleted:
-                print(f"Cleaned up {deleted} old history log entries")
+                logger.info(f"Cleaned up {deleted} old history log entries")
     except Exception as e:
-        print(f"Error cleaning up old history logs: {e}")
+        logger.error(f"Error cleaning up old history logs: {e}")
 
 def cleanup_old_logs(retention_days=7):
     """Delete logs older than retention_days to limit DB growth."""
@@ -1119,6 +1147,6 @@ def cleanup_old_logs(retention_days=7):
             cursor.execute('DELETE FROM crawl_logs WHERE timestamp_epoch < ?', (cutoff,))
             deleted = cursor.rowcount
             if deleted:
-                print(f"Cleaned up {deleted} old log entries (> {retention_days} days)")
+                logger.info(f"Cleaned up {deleted} old log entries (> {retention_days} days)")
     except Exception as e:
-        print(f"Error cleaning up old logs: {e}")
+        logger.error(f"Error cleaning up old logs: {e}")

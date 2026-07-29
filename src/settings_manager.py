@@ -1,6 +1,12 @@
 import json
 import os
+import logging
 from pathlib import Path
+
+from src.utils import lazy
+logger = logging.getLogger(__name__)
+
+auth_db = lazy('src.auth_db')
 
 class SettingsManager:
     def __init__(self, session_id=None, user_id=None, tier='guest'):
@@ -341,8 +347,7 @@ class SettingsManager:
         try:
             # If user_id is provided, load from database
             if self.user_id:
-                from src.auth_db import get_user_settings
-                saved_settings = get_user_settings(self.user_id)
+                saved_settings = auth_db.get_user_settings(self.user_id)
                 if saved_settings:
                     # Merge with defaults to ensure all keys are present
                     settings = {**self.default_settings}
@@ -353,7 +358,7 @@ class SettingsManager:
             return self.default_settings.copy()
 
         except Exception as e:
-            print(f"Error loading settings: {e}")
+            logger.error(f"Error loading settings: {e}")
             return self.default_settings.copy()
 
     def save_settings(self, settings):
@@ -371,14 +376,13 @@ class SettingsManager:
 
             # Load current settings from database to preserve unauthorized keys
             if self.user_id:
-                from src.auth_db import get_user_settings, save_user_settings
-                current_db_settings = get_user_settings(self.user_id) or self.default_settings.copy()
+                current_db_settings = auth_db.get_user_settings(self.user_id) or self.default_settings.copy()
 
                 # Update only the filtered (allowed) keys
                 current_db_settings.update(filtered_settings)
 
                 # Save back to database
-                success, message = save_user_settings(self.user_id, current_db_settings)
+                success, message = auth_db.save_user_settings(self.user_id, current_db_settings)
 
                 # Update in-memory settings
                 self.current_settings = current_db_settings

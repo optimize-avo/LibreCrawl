@@ -1,8 +1,11 @@
 """Memory usage monitoring for crawler instances"""
+import logging
 import psutil
 import sys
 import threading
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryMonitor:
@@ -63,7 +66,7 @@ class MemoryMonitor:
             memory_info = self.process.memory_info()
             return memory_info.rss / 1024 / 1024  # Convert bytes to MB
         except Exception as e:
-            print(f"Error getting memory info: {e}")
+            logger.error(f"Error getting memory info: {e}")
             return 0
 
     def estimate_crawl_memory(self, num_urls):
