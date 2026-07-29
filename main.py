@@ -1791,6 +1791,14 @@ def recover_crashed_crawls():
             print("=" * 60)
             recovered_count = 0
             for crawl in crashed:
+                urls_disc = crawl.get('urls_discovered') or 0
+                urls_crawl = crawl.get('urls_crawled') or 0
+                if urls_disc == 0 and urls_crawl == 0:
+                    set_crawl_status(crawl['id'], 'failed')
+                    log_tracker.warn('system', f'Pemulihan dilewati: {crawl["base_url"]} — tidak ada URL',
+                                        crawl_id=crawl['id'], status='failed')
+                    print(f"  Skipped (no URLs): {crawl['base_url']} (ID: {crawl['id']})")
+                    continue
                 try:
                     crawler = WebCrawler()
                     success, message = crawler.resume_from_database(
@@ -1843,6 +1851,8 @@ def graceful_shutdown(signum, frame):
                     try:
                         crawler._save_batch_to_db(force=True)
                         crawler._save_queue_checkpoint()
+                        from src.crawl_db import set_crawl_status
+                        set_crawl_status(crawler.crawl_id, 'stopped')
                     except Exception as e:
                         print(f"    Error saving crawl {crawler.crawl_id}: {e}")
 
