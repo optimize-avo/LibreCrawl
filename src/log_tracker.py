@@ -244,12 +244,17 @@ class LogTracker:
 
         # 2. Also check DB for any running/paused crawls not in memory
         try:
-            from src.crawl_db import get_historical_logs
+            from src.crawl_db import get_historical_logs, get_crawl_by_id
             db_result = get_historical_logs(limit=5000, offset=0)
             for e in reversed(db_result['logs']):
                 cid = e.get('crawl_id')
                 status = e.get('status', '')
                 if cid and status in ('running', 'paused', 'idle') and cid not in seen:
+                    # Verify against actual crawl status (crawl_logs may be stale)
+                    info = get_crawl_by_id(cid)
+                    actual_status = (info or {}).get('status', '')
+                    if actual_status not in ('running', 'paused'):
+                        continue
                     seen[cid] = {
                         'crawl_id': cid,
                         'url': e.get('url'),

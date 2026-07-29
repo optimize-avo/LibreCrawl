@@ -723,6 +723,17 @@ def fix_stopped_to_completed():
         print(f"Error fixing stopped crawls: {e}")
         return 0
 
+def cleanup_crawl_logs(crawl_id):
+    """Delete stale log entries for a crawl (e.g. when marking it failed)."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM crawl_logs WHERE crawl_id = ?', (crawl_id,))
+            return cursor.rowcount
+    except Exception as e:
+        print(f"Error cleaning up crawl logs: {e}")
+        return 0
+
 def cleanup_old_crawls(days=90):
     """Delete crawls older than specified days (optional maintenance)"""
     try:

@@ -1765,7 +1765,7 @@ def export_data():
 def recover_crashed_crawls():
     """Auto-resume any crawls that were running when server shut down"""
     try:
-        from src.crawl_db import get_crashed_crawls, set_crawl_status, fix_stopped_to_completed
+        from src.crawl_db import get_crashed_crawls, set_crawl_status, fix_stopped_to_completed, cleanup_crawl_logs
 
         # Fix old crawls affected by the stopped-vs-completed bug
         fix_stopped_to_completed()
@@ -1782,6 +1782,7 @@ def recover_crashed_crawls():
                 urls_crawl = crawl.get('urls_crawled') or 0
                 if urls_disc == 0 and urls_crawl == 0:
                     set_crawl_status(crawl['id'], 'failed')
+                    cleanup_crawl_logs(crawl['id'])
                     log_tracker.warn('system', f'Pemulihan dilewati: {crawl["base_url"]} — tidak ada URL',
                                         crawl_id=crawl['id'], status='failed')
                     print(f"  Skipped (no URLs): {crawl['base_url']} (ID: {crawl['id']})")
@@ -1807,11 +1808,13 @@ def recover_crashed_crawls():
                         print(f"  Resumed: {crawl['base_url']} (ID: {crawl['id']}) - {message}")
                     else:
                         set_crawl_status(crawl['id'], 'failed')
+                        cleanup_crawl_logs(crawl['id'])
                         log_tracker.error('system', f'Pemulihan crash gagal: {crawl["base_url"]} — {message}',
                                            crawl_id=crawl['id'], status='failed')
                         print(f"  Failed to resume: {crawl['base_url']} (ID: {crawl['id']}) - {message}")
                 except Exception as e:
                     set_crawl_status(crawl['id'], 'failed')
+                    cleanup_crawl_logs(crawl['id'])
                     print(f"  Error resuming: {crawl['base_url']} (ID: {crawl['id']}) - {e}")
 
             print(f"\n  Recovered {recovered_count}/{len(crashed)} crawls")
