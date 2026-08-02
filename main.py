@@ -766,13 +766,6 @@ def compare_page():
     user = get_user_by_id(session.get('user_id'))
     return render_template('compare.html', user=user)
 
-@app.route('/compare')
-@login_required
-def compare_page():
-    """Compare page — compare two crawls"""
-    user = get_user_by_id(session.get('user_id'))
-    return render_template('compare.html', user=user)
-
 @app.route('/debug/memory')
 @login_required
 def debug_memory_page():
