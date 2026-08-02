@@ -8,6 +8,12 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from contextlib import contextmanager
+import logging
+
+from src.utils import lazy
+logger = logging.getLogger(__name__)
+
+crawl_db = lazy('src.crawl_db')
 
 # Database file location - stored in data/ for Docker volume persistence
 DB_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'users.db')
@@ -99,11 +105,9 @@ def init_db():
         except:
             pass  # Column already exists
 
-        print("Database initialized successfully")
+        logger.info("Database initialized successfully")
 
-    # Initialize crawl persistence tables
-    from src.crawl_db import init_crawl_tables
-    init_crawl_tables()
+    crawl_db.init_crawl_tables()
 
 def hash_password(password):
     """Hash a password with bcrypt"""
@@ -174,7 +178,7 @@ def create_user(username, email, password):
         else:
             return False, "Registration failed", None
     except Exception as e:
-        print(f"Registration error: {e}")
+        logger.error(f"Registration error: {e}")
         return False, "An error occurred during registration", None
 
 def authenticate_user(username, password):
@@ -221,7 +225,7 @@ def authenticate_user(username, password):
             return True, "Login successful", user_data
 
     except Exception as e:
-        print(f"Authentication error: {e}")
+        logger.error(f"Authentication error: {e}")
         return False, "An error occurred during login", None
 
 def get_user_by_id(user_id):
@@ -241,7 +245,7 @@ def get_user_by_id(user_id):
             return None
 
     except Exception as e:
-        print(f"Error fetching user: {e}")
+        logger.error(f"Error fetching user: {e}")
         return None
 
 def get_all_users():
@@ -259,7 +263,7 @@ def get_all_users():
             return [dict(user) for user in users]
 
     except Exception as e:
-        print(f"Error fetching users: {e}")
+        logger.error(f"Error fetching users: {e}")
         return []
 
 def verify_user(user_id):
@@ -270,7 +274,7 @@ def verify_user(user_id):
             cursor.execute('UPDATE users SET verified = 1 WHERE id = ?', (user_id,))
         return True, "User verified successfully"
     except Exception as e:
-        print(f"Error verifying user: {e}")
+        logger.error(f"Error verifying user: {e}")
         return False, str(e)
 
 def save_user_settings(user_id, settings_dict):
@@ -289,7 +293,7 @@ def save_user_settings(user_id, settings_dict):
             ''', (user_id, settings_json))
         return True, "Settings saved successfully"
     except Exception as e:
-        print(f"Error saving user settings: {e}")
+        logger.error(f"Error saving user settings: {e}")
         return False, f"Failed to save settings: {str(e)}"
 
 def get_user_settings(user_id):
@@ -309,7 +313,7 @@ def get_user_settings(user_id):
                 return json.loads(result['settings_json'])
             return None
     except Exception as e:
-        print(f"Error fetching user settings: {e}")
+        logger.error(f"Error fetching user settings: {e}")
         return None
 
 def delete_user_settings(user_id):
@@ -320,7 +324,7 @@ def delete_user_settings(user_id):
             cursor.execute('DELETE FROM user_settings WHERE user_id = ?', (user_id,))
         return True
     except Exception as e:
-        print(f"Error deleting user settings: {e}")
+        logger.error(f"Error deleting user settings: {e}")
         return False
 
 def set_user_tier(user_id, tier):
@@ -335,7 +339,7 @@ def set_user_tier(user_id, tier):
             cursor.execute('UPDATE users SET tier = ? WHERE id = ?', (tier, user_id))
         return True, f"User tier updated to {tier}"
     except Exception as e:
-        print(f"Error setting user tier: {e}")
+        logger.error(f"Error setting user tier: {e}")
         return False, str(e)
 
 def get_user_tier(user_id):
@@ -347,7 +351,7 @@ def get_user_tier(user_id):
             result = cursor.fetchone()
             return result['tier'] if result else 'guest'
     except Exception as e:
-        print(f"Error getting user tier: {e}")
+        logger.error(f"Error getting user tier: {e}")
         return 'guest'
 
 def log_crawl_start(user_id, base_url):
@@ -365,7 +369,7 @@ def log_crawl_start(user_id, base_url):
             ''', (user_id, base_url))
             return cursor.lastrowid
     except Exception as e:
-        print(f"Error logging crawl start: {e}")
+        logger.error(f"Error logging crawl start: {e}")
         return None
 
 def log_crawl_complete(crawl_id, urls_crawled, status='completed'):
@@ -382,7 +386,7 @@ def log_crawl_complete(crawl_id, urls_crawled, status='completed'):
             ''', (urls_crawled, status, crawl_id))
         return True
     except Exception as e:
-        print(f"Error logging crawl complete: {e}")
+        logger.error(f"Error logging crawl complete: {e}")
         return False
 
 def log_guest_crawl(ip_address):
@@ -396,7 +400,7 @@ def log_guest_crawl(ip_address):
             ''', (ip_address,))
         return True
     except Exception as e:
-        print(f"Error logging guest crawl: {e}")
+        logger.error(f"Error logging guest crawl: {e}")
         return False
 
 def get_guest_crawls_last_24h(ip_address):
@@ -413,7 +417,7 @@ def get_guest_crawls_last_24h(ip_address):
             result = cursor.fetchone()
             return result['count'] if result else 0
     except Exception as e:
-        print(f"Error getting guest crawl count: {e}")
+        logger.error(f"Error getting guest crawl count: {e}")
         return 0
 
 def get_crawls_last_24h(user_id):
@@ -434,7 +438,7 @@ def get_crawls_last_24h(user_id):
             result = cursor.fetchone()
             return result['count'] if result else 0
     except Exception as e:
-        print(f"Error getting crawl count: {e}")
+        logger.error(f"Error getting crawl count: {e}")
         return 0
 
 def get_user_crawl_history(user_id, limit=50):
@@ -451,7 +455,7 @@ def get_user_crawl_history(user_id, limit=50):
             ''', (user_id, limit))
             return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
-        print(f"Error getting crawl history: {e}")
+        logger.error(f"Error getting crawl history: {e}")
         return []
 
 def create_verification_token(user_id, app_source='main'):
@@ -483,7 +487,7 @@ def create_verification_token(user_id, app_source='main'):
 
         return token
     except Exception as e:
-        print(f"Error creating verification token: {e}")
+        logger.error(f"Error creating verification token: {e}")
         return None
 
 def verify_token(token):
@@ -531,7 +535,7 @@ def verify_token(token):
             return True, "Email verified successfully!", result['app_source'], result['email']
 
     except Exception as e:
-        print(f"Error verifying token: {e}")
+        logger.error(f"Error verifying token: {e}")
         return False, "An error occurred during verification", None, None
 
 def get_user_by_email(email):
@@ -550,5 +554,5 @@ def get_user_by_email(email):
                 return dict(user)
             return None
     except Exception as e:
-        print(f"Error fetching user by email: {e}")
+        logger.error(f"Error fetching user by email: {e}")
         return None

@@ -31,14 +31,24 @@ let compareMode = false;
 let selectedCrawls = new Set();
 let allDomains = [];
 let activeCrawlRefreshInterval = null;
+let dashboardRefreshInterval = null;
+let currentUserId = null;
+let currentUsername = null;
 
 async function loadDashboard() {
     try {
-        // Fetch active crawls and history in parallel
-        const [historyResponse, activeResponse] = await Promise.all([
+        // Fetch current user info, active crawls, and history in parallel
+        const [userResponse, historyResponse, activeResponse] = await Promise.all([
+            fetch('/api/user/info').catch(() => ({ json: () => ({ success: false }) })),
             fetch('/api/crawls/history'),
             fetch('/api/my_active_crawls').catch(() => ({ json: () => ({ success: false, crawls: [] }) }))
         ]);
+
+        const userData = await userResponse.json();
+        if (userData.success) {
+            currentUserId = userData.user.id;
+            currentUsername = userData.user.username;
+        }
 
         const data = await historyResponse.json();
         const activeData = await activeResponse.json();
@@ -95,15 +105,18 @@ function renderActiveCrawls(crawls) {
                 <span style="font-size: 12px; font-weight: 400; opacity: 0.8; margin-left: 4px;">${crawls.length} in progress</span>
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
-                ${crawls.map(crawl => `
-                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer; transition: background 0.2s;"
-                         onclick="reconnectFromDashboard(${crawl.id})"
+                ${crawls.map(crawl => {
+                    const isOwner = currentUserId !== null && crawl.user_id === currentUserId;
+                    return `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; ${isOwner ? 'cursor: pointer;' : ''} transition: background 0.2s;"
+                         ${isOwner ? `onclick="reconnectFromDashboard(${crawl.id})"` : ''}
                          onmouseover="this.style.background='rgba(255,255,255,0.2)'"
                          onmouseout="this.style.background='rgba(255,255,255,0.12)'">
                         <div style="flex: 1; min-width: 0;">
                             <div style="font-weight: 600; font-size: 14px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(crawl.base_url)}</div>
-                            <div style="font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 2px;">
-                                ${crawl.status === 'running' ? 'Crawling...' : 'Paused'}
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 2px; display: flex; gap: 8px;">
+                                <span>${crawl.status === 'running' ? 'Crawling...' : 'Paused'}</span>
+                                ${crawl.owner_username ? `<span style="opacity:0.7;">by ${escapeHtml(crawl.owner_username)}</span>` : ''}
                             </div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
@@ -113,29 +126,26 @@ function renderActiveCrawls(crawls) {
                                 </div>
                                 <span style="font-size: 13px; font-weight: 600; color: #ffffff; min-width: 36px;">${crawl.progress_percent || 0}%</span>
                             </div>
+                            ${isOwner ? `
                             <button style="padding: 6px 14px; background: rgba(255,255,255,0.2); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: background 0.2s;"
                                     onclick="event.stopPropagation(); reconnectFromDashboard(${crawl.id})"
                                     onmouseover="this.style.background='rgba(255,255,255,0.3)'"
                                     onmouseout="this.style.background='rgba(255,255,255,0.2)'">
                                 Reconnect
                             </button>
+                            ` : `<span style="font-size:12px;color:rgba(255,255,255,0.5);padding:6px 14px;">Read-only</span>`}
                         </div>
-                    </div>
-                `).join('')}
+                    </div>`;
+                }).join('')}
             </div>
         </div>
     `;
 
     // Start auto-refresh if not already running
+    // Refreshes the full dashboard so domain list + crawl detail also update
     if (!activeCrawlRefreshInterval) {
-        activeCrawlRefreshInterval = setInterval(async () => {
-            try {
-                const response = await fetch('/api/my_active_crawls');
-                const data = await response.json();
-                renderActiveCrawls(data.crawls || []);
-            } catch (error) {
-                console.error('Error refreshing active crawls:', error);
-            }
+        activeCrawlRefreshInterval = setInterval(() => {
+            loadDashboard();
         }, 30000);
     }
 }
@@ -144,7 +154,8 @@ function reconnectFromDashboard(crawlId) {
     sessionStorage.setItem('force_ui_refresh', 'true');
     sessionStorage.setItem('reconnect_crawl_id', crawlId);
     sessionStorage.setItem('current_crawl_id', crawlId);
-    window.location.href = `/?crawl_id=${crawlId}`;
+    // Use reconnect_crawl_id for active crawls so the page auto-reconnects
+    window.location.href = `/?reconnect_crawl_id=${crawlId}`;
 }
 
 function renderDomainSidebar() {
@@ -230,10 +241,12 @@ function renderCrawlDetail() {
         const isSelected = selectedCrawls.has(crawl.id);
         const urlsCrawled = crawl.urls_crawled || 0;
         const clickable = !compareMode && urlsCrawled > 0;
+        const isOwner = currentUserId !== null && crawl.user_id === currentUserId;
+        const ownerLabel = crawl.owner_username || (isOwner ? currentUsername : 'unknown');
 
         html += `
             <div class="crawl-card ${isSelected ? 'selected' : ''}"
-                 ${clickable ? `onclick="openCrawl(${crawl.id}, '${crawl.status}', ${urlsCrawled})" style="cursor:pointer;"` : ''}>
+                 ${clickable ? `onclick="openCrawl(${crawl.id}, '${crawl.status}', ${urlsCrawled}, ${crawl.user_id})" style="cursor:pointer;"` : ''}>
                 ${compareMode ? `<input type="checkbox" class="compare-checkbox" ${isSelected ? 'checked' : ''} onchange="toggleCrawlSelect(${crawl.id})">` : ''}
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -242,14 +255,15 @@ function renderCrawlDetail() {
                         ${crawl.display_name ? `<span style="font-size:12px;color:var(--fg-muted);">— ${escapeHtml(crawl.display_name)}</span>` : ''}
                     </div>
                     <div style="display:flex;gap:16px;font-size:12px;color:var(--fg-muted);">
+                        <span style="display:flex;align-items:center;gap:4px;"><span style="opacity:0.6;">by</span> ${escapeHtml(ownerLabel)}</span>
                         <span>${urlsCrawled} URLs</span>
                         <span style="color:${issues > 0 ? 'var(--error)' : 'var(--success)'};">${issues} issues</span>
                         ${crawl.completed_at ? `<span>${formatDuration(crawl.started_at, crawl.completed_at)}</span>` : ''}
                     </div>
                 </div>
                 <div style="display:flex;gap:6px;flex-shrink:0;">
-                    <button class="action-btn" onclick="event.stopPropagation(); renameCrawl(${crawl.id}, '${(crawl.display_name || '').replace(/'/g, "\\'")}')">Rename</button>
-                    <button class="action-btn danger" onclick="event.stopPropagation(); deleteCrawl(${crawl.id})">Delete</button>
+                    ${isOwner ? `<button class="action-btn" onclick="event.stopPropagation(); renameCrawl(${crawl.id}, '${(crawl.display_name || '').replace(/'/g, "\\'")}')">Rename</button>` : ''}
+                    ${isOwner ? `<button class="action-btn danger" onclick="event.stopPropagation(); deleteCrawl(${crawl.id})">Delete</button>` : ''}
                 </div>
             </div>
         `;
@@ -302,9 +316,18 @@ function escapeHtml(str) {
 // Crawl Actions
 // ========================================
 
-async function openCrawl(crawlId, status, urlsCrawled) {
+async function openCrawl(crawlId, status, urlsCrawled, ownerUserId) {
     if (urlsCrawled === 0) {
         alert('No URLs crawled yet — nothing to load.');
+        return;
+    }
+
+    const isOwner = currentUserId !== null && ownerUserId === currentUserId;
+    const isActive = status === 'running' || status === 'paused';
+
+    // Cannot reconnect to another user's active crawl
+    if (isActive && !isOwner) {
+        alert('This crawl is owned by someone else and is still in progress. Wait until it completes to view the results.');
         return;
     }
 
@@ -313,11 +336,10 @@ async function openCrawl(crawlId, status, urlsCrawled) {
     // Show loading overlay on dashboard
     showDashboardLoading('Loading crawl data...', `Preparing crawl #${crawlId}`);
 
-    // Use /load for completed crawls (view-only), /resume for interrupted crawls
-    const isCompleted = status === 'completed';
-    const endpoint = isCompleted
-        ? `/api/crawls/${crawlId}/load`
-        : `/api/crawls/${crawlId}/resume`;
+    // Use /load for completed crawls, /reconnect for active/running/paused crawls
+    const endpoint = isActive
+        ? `/api/crawls/${crawlId}/reconnect`
+        : `/api/crawls/${crawlId}/load`;
 
     try {
         updateDashboardLoading('Loading crawl data...', 'Fetching from database...');
@@ -327,7 +349,11 @@ async function openCrawl(crawlId, status, urlsCrawled) {
             updateDashboardLoading('Redirecting...', 'Crawl loaded successfully');
             sessionStorage.setItem('force_ui_refresh', 'true');
             sessionStorage.setItem('current_crawl_id', crawlId);
-            window.location.href = `/?crawl_id=${crawlId}`;
+            if (isActive) {
+                window.location.href = `/?reconnect_crawl_id=${crawlId}`;
+            } else {
+                window.location.href = `/?crawl_id=${crawlId}`;
+            }
         } else {
             hideDashboardLoading();
             alert('Error: ' + (data.error || data.message || 'Unknown error'));

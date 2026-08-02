@@ -6,6 +6,23 @@ import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional, Tuple
+import logging
+logger = logging.getLogger(__name__)
+
+
+def _send_smtp(msg):
+    """Send email handling both STARTTLS (587) and implicit TLS (465) ports."""
+    if SMTP_PORT == 465:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+            if SMTP_USER and SMTP_PASSWORD:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            if SMTP_PORT != 25 and SMTP_USER and SMTP_PASSWORD:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
 
 # Load environment variables
 def get_env(key: str, default: str = '') -> str:
@@ -38,8 +55,8 @@ def send_verification_email(to_email: str, username: str, token: str, app_source
         (success, message)
     """
     if not SMTP_USER or not SMTP_PASSWORD:
-        print("Warning: SMTP credentials not configured. Email not sent.")
-        print(f"Verification link would be: {MAIN_APP_URL}/verify?token={token}")
+        logger.warning("SMTP credentials not configured. Email not sent.")
+        logger.debug(f"Verification link would be: {MAIN_APP_URL}/verify?token={token}")
         return False, "Email service not configured"
 
     try:
@@ -181,19 +198,14 @@ The LibreCrawl Team
         msg.attach(part1)
         msg.attach(part2)
 
-        # Send email
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            # Only use TLS and login if credentials provided
-            if SMTP_PORT != 25 and SMTP_USER and SMTP_PASSWORD:
-                server.starttls()
-                server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        # Send email (handles both STARTTLS and implicit TLS)
+        _send_smtp(msg)
 
-        print(f"Verification email sent to {to_email}")
+        logger.info(f"Verification email sent to {to_email}")
         return True, "Verification email sent successfully"
 
     except Exception as e:
-        print(f"Error sending email: {e}")
+        logger.error(f"Error sending email: {e}")
         return False, f"Failed to send email: {str(e)}"
 
 def send_welcome_email(to_email: str, username: str, app_source: str = 'main') -> Tuple[bool, str]:
@@ -299,16 +311,11 @@ The LibreCrawl Team
         msg.attach(part1)
         msg.attach(part2)
 
-        # Send email
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            # Only use TLS and login if credentials provided
-            if SMTP_PORT != 25 and SMTP_USER and SMTP_PASSWORD:
-                server.starttls()
-                server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        # Send email (handles both STARTTLS and implicit TLS)
+        _send_smtp(msg)
 
         return True, "Welcome email sent successfully"
 
     except Exception as e:
-        print(f"Error sending welcome email: {e}")
+        logger.error(f"Error sending welcome email: {e}")
         return False, f"Failed to send email: {str(e)}"

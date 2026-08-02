@@ -1,6 +1,8 @@
 """JavaScript rendering handler using Playwright"""
 import asyncio
 import threading
+import logging
+logger = logging.getLogger(__name__)
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from urllib.parse import urlparse
 
@@ -18,7 +20,7 @@ class JavaScriptRenderer:
     async def initialize(self):
         """Initialize Playwright browser and page pool"""
         try:
-            print("Starting Playwright browser...")
+            logger.info("Starting Playwright browser...")
             self.playwright = await async_playwright().start()
 
             # Choose browser based on configuration
@@ -47,10 +49,10 @@ class JavaScriptRenderer:
                 page.set_default_timeout(self.config.get('js_timeout', 30) * 1000)
                 self.page_pool.append(page)
 
-            print(f"JavaScript rendering initialized with {len(self.page_pool)} browser pages")
+            logger.info(f"JavaScript rendering initialized with {len(self.page_pool)} browser pages")
 
         except Exception as e:
-            print(f"Failed to initialize JavaScript rendering: {e}")
+            logger.error(f"Failed to initialize JavaScript rendering: {e}")
             await self.cleanup()
             raise
 
@@ -73,10 +75,10 @@ class JavaScriptRenderer:
                 await self.playwright.stop()
                 self.playwright = None
 
-            print("JavaScript rendering resources cleaned up")
+            logger.info("JavaScript rendering resources cleaned up")
 
         except Exception as e:
-            print(f"Error during JavaScript cleanup: {e}")
+            logger.error(f"Error during JavaScript cleanup: {e}")
 
     async def get_page(self):
         """Get an available page from the pool"""

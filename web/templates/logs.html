@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log Tracker — AVO Crawl</title>
+    <link rel="stylesheet" href="/static/css/tw.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+            min-height: 100vh;
+        }
+        .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+        .main-content { flex: 1; padding: 20px 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+        /* Summary Cards */
+        .summary-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .summary-card {
+            flex: 1;
+            min-width: 140px;
+            background: var(--card);
+            border: 1px solid var(--border-hairline);
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+        .summary-card .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--fg-muted);
+            margin-bottom: 4px;
+        }
+        .summary-card .value {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .summary-card .value.active { color: var(--primary); }
+        .summary-card .value.completed { color: var(--success); }
+        .summary-card .value.failed { color: var(--error); }
+        .summary-card .value.stopped { color: var(--fg-muted); }
+
+        /* Filters */
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filter-bar select, .filter-bar input {
+            padding: 6px 10px;
+            font-size: 12px;
+            background: var(--card);
+            border: 1px solid var(--border-hairline);
+            border-radius: 6px;
+            color: var(--ink);
+            font-family: inherit;
+        }
+        .filter-bar select:focus, .filter-bar input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .filter-bar label {
+            font-size: 12px;
+            color: var(--fg-muted);
+        }
+        .auto-scroll-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--fg-muted);
+            cursor: pointer;
+            margin-left: auto;
+        }
+
+        /* Log Table */
+        .log-container {
+            background: var(--card);
+            border: 1px solid var(--border-hairline);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .log-header {
+            display: grid;
+            grid-template-columns: 140px 55px 70px 0.7fr 0.3fr 70px;
+            gap: 6px;
+            padding: 8px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--fg-muted);
+            border-bottom: 1px solid var(--border-hairline);
+            background: var(--panel);
+        }
+        .log-list {
+            max-height: calc(100vh - 320px);
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .log-entry {
+            display: grid;
+            grid-template-columns: 140px 55px 70px 0.7fr 0.3fr 70px;
+            gap: 6px;
+            padding: 4px 12px;
+            border-bottom: 1px solid var(--border-hairline);
+            transition: background 0.1s ease;
+            align-items: center;
+        }
+        .log-entry:hover { background: var(--muted); }
+        .log-entry:last-child { border-bottom: none; }
+
+        .log-entry .timestamp {
+            color: var(--fg-muted);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .log-entry .level-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 9999px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .level-INFO { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary); }
+        .level-WARN { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
+        .level-ERROR { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
+        .log-entry .source {
+            font-size: 11px;
+            color: var(--fg-muted);
+        }
+        .log-entry .message {
+            color: var(--ink);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .log-entry .url-cell {
+            font-size: 11px;
+            color: var(--fg-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .log-entry .status-badge {
+            font-size: 10px;
+            font-weight: 500;
+            padding: 1px 6px;
+            border-radius: 9999px;
+            text-align: center;
+            text-transform: capitalize;
+        }
+        .status-running { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary); }
+        .status-completed { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+        .status-failed { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
+        .status-stopped { background: var(--muted); color: var(--fg-muted); }
+        .status-paused { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
+        .status-demo_stopped { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning); }
+
+        /* Active Crawls Panel */
+        .active-panel {
+            background: var(--card);
+            border: 1px solid var(--border-hairline);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .active-panel-header {
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ink);
+            border-bottom: 1px solid var(--border-hairline);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .active-panel-header .count {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--fg-muted);
+            background: var(--muted);
+            padding: 1px 8px;
+            border-radius: 9999px;
+        }
+        .active-crawl-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            border-bottom: 1px solid var(--border-hairline);
+            font-size: 12px;
+        }
+        .active-crawl-item:last-child { border-bottom: none; }
+        .active-crawl-item .domain {
+            font-weight: 500;
+            color: var(--ink);
+            min-width: 140px;
+        }
+        .active-crawl-item .progress-bar {
+            flex: 1;
+            height: 6px;
+            background: var(--muted);
+            border-radius: 9999px;
+            overflow: hidden;
+            max-width: 200px;
+        }
+        .active-crawl-item .progress-bar .fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.5s ease;
+        }
+        .active-crawl-item .progress-label {
+            font-size: 11px;
+            color: var(--fg-muted);
+            min-width: 40px;
+            text-align: right;
+        }
+
+        /* Status indicator dot */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.running { background: var(--primary); animation: pulse 1.5s ease-in-out infinite; }
+        .status-dot.completed { background: var(--success); }
+        .status-dot.failed { background: var(--error); }
+        .status-dot.stopped { background: var(--fg-muted); }
+        .status-dot.paused { background: var(--warning); }
+        .status-dot.demo_stopped { background: var(--warning); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--fg-muted);
+            font-size: 13px;
+        }
+
+        /* Count badge in nav */
+        .log-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 600;
+            background: var(--primary);
+            color: var(--primary-fg);
+            border-radius: 9999px;
+            padding: 1px 6px;
+            min-width: 18px;
+            height: 16px;
+        }
+
+        /* Progress bar inline in log entry */
+        .log-progress {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .log-progress .mini-bar {
+            width: 50px;
+            height: 4px;
+            background: var(--muted);
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .log-progress .mini-bar .fill {
+            height: 100%;
+            border-radius: 9999px;
+            background: var(--primary);
+            transition: width 0.5s ease;
+        }
+        .log-progress .pct {
+            font-size: 10px;
+            color: var(--fg-muted);
+            min-width: 30px;
+            text-align: right;
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-top: 1px solid var(--border-hairline);
+            font-size: 12px;
+        }
+        .pagination button {
+            padding: 4px 10px;
+            border: 1px solid var(--border-hairline);
+            border-radius: 4px;
+            background: var(--card);
+            color: var(--ink);
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .pagination button:hover:not(:disabled) { background: var(--muted); }
+        .pagination button:disabled { opacity: 0.4; cursor: default; }
+        .pagination .page-num {
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            min-width: 24px;
+            text-align: center;
+        }
+        .pagination .page-num.active {
+            background: var(--primary);
+            color: var(--primary-fg);
+        }
+        .pagination .page-num:hover:not(.active) { background: var(--muted); }
+        .pagination .page-info {
+            color: var(--fg-muted);
+            font-size: 11px;
+            margin: 0 8px;
+        }
+        .pagination .new-events-bar {
+            background: var(--primary);
+            color: var(--primary-fg);
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .clear-btn {
+            padding: 4px 12px;
+            font-size: 11px;
+            background: var(--muted);
+            border: 1px solid var(--border-hairline);
+            border-radius: 4px;
+            color: var(--fg-muted);
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .clear-btn:hover { background: var(--border-hairline); color: var(--ink); }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        {% include 'partials/_navbar.html' %}
+        <div class="main-content">
+            <!-- Summary Bar -->
+            <div class="summary-bar" id="summaryBar">
+                <div class="summary-card">
+                    <div class="label">Audit Berjalan</div>
+                    <div class="value active" id="activeCount">0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Completed</div>
+                    <div class="value completed" id="completedCount">0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Failed</div>
+                    <div class="value failed" id="failedCount">0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Stopped</div>
+                    <div class="value stopped" id="stoppedCount">0</div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">Total Events</div>
+                    <div class="value" id="totalEvents">0</div>
+                </div>
+            </div>
+
+            <!-- Active Crawls Panel -->
+            <div class="active-panel" id="activePanel">
+                <div class="active-panel-header">
+                    <span>&#9724; Audit Berjalan</span>
+                    <span class="count" id="activeCrawlCount">0</span>
+                </div>
+                <div id="activeCrawlList">
+                    <div class="empty-state">Tidak ada audit berjalan</div>
+                </div>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="filter-bar">
+                <label for="levelFilter">Level</label>
+                <select id="levelFilter">
+                    <option value="">Semua</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARN">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+
+                <label for="statusFilter">Status</label>
+                <select id="statusFilter">
+                    <option value="">Semua</option>
+                    <option value="running">Berjalan</option>
+                    <option value="completed">Selesai</option>
+                    <option value="failed">Gagal</option>
+                    <option value="stopped">Berhenti</option>
+                    <option value="paused">Menunggu</option>
+                </select>
+
+                <label for="searchInput">Search</label>
+                <input type="text" id="searchInput" placeholder="Cari pesan..." style="width:200px;">
+
+                <button class="clear-btn" id="clearLogsBtn">&#128465; Hapus</button>
+
+                <div class="auto-scroll-toggle">
+                    <input type="checkbox" id="autoScroll" checked>
+                    <label for="autoScroll">Auto-scroll</label>
+                </div>
+            </div>
+
+            <!-- Log Table -->
+            <div class="log-container">
+                <div class="log-header">
+                    <span>Timestamp</span>
+                    <span>Level</span>
+                    <span>Source</span>
+                    <span>Message</span>
+                    <span>URL</span>
+                    <span>Status</span>
+                </div>
+                <div class="log-list" id="logList">
+                    <div class="empty-state">Menunggu event...</div>
+                </div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/logs.js"></script>
+    <script>
+        async function logout() {
+            try {
+                await fetch('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            } catch (e) { /* ignore */ }
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

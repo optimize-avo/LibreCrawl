@@ -7,4 +7,5 @@ data/*.db
 .env
 node_modules/
 web/static/css/tw.css
+__MACOSX/
 .omo/

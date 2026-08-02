@@ -1,7 +1,10 @@
 """Sitemap discovery and parsing"""
 import gzip
+import logging
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 
 class SitemapParser:
@@ -34,7 +37,7 @@ class SitemapParser:
         robots_sitemaps = self._get_sitemaps_from_robots(base_domain)
         sitemap_urls.extend(robots_sitemaps)
 
-        print(f"Discovering sitemaps for {base_domain}...")
+        logger.info(f"Discovering sitemaps for {base_domain}...")
 
         all_urls = []
         for sitemap_url in sitemap_urls:
@@ -42,7 +45,7 @@ class SitemapParser:
                 urls = self._parse_sitemap(sitemap_url, depth=1)
                 all_urls.extend(urls)
             except Exception as e:
-                print(f"Failed to parse sitemap {sitemap_url}: {e}")
+                logger.warning(f"Failed to parse sitemap {sitemap_url}: {e}")
 
         return all_urls
 
@@ -61,7 +64,7 @@ class SitemapParser:
                         sitemaps.append(sitemap_url)
 
         except Exception as e:
-            print(f"Could not fetch robots.txt: {e}")
+            logger.warning(f"Could not fetch robots.txt: {e}")
 
         return sitemaps
 
@@ -76,7 +79,7 @@ class SitemapParser:
             return []
 
         try:
-            print(f"Parsing sitemap: {sitemap_url}")
+            logger.info(f"Parsing sitemap: {sitemap_url}")
             response = self.session.get(sitemap_url, timeout=self.timeout)
 
             if response.status_code != 200:
@@ -94,7 +97,7 @@ class SitemapParser:
             try:
                 root = ET.fromstring(content)
             except ET.ParseError as e:
-                print(f"XML parse error for {sitemap_url}: {e}")
+                logger.warning(f"XML parse error for {sitemap_url}: {e}")
                 return []
 
             # Remove namespace prefixes for easier parsing
@@ -107,7 +110,7 @@ class SitemapParser:
             # Check if this is a sitemap index (contains other sitemaps)
             sitemaps = root.findall('.//sitemap')
             if sitemaps:
-                print(f"Found sitemap index with {len(sitemaps)} nested sitemaps")
+                logger.info(f"Found sitemap index with {len(sitemaps)} nested sitemaps")
                 for sitemap in sitemaps:
                     loc_elem = sitemap.find('loc')
                     if loc_elem is not None and loc_elem.text:
@@ -118,7 +121,7 @@ class SitemapParser:
             # Extract URLs from sitemap
             urls = root.findall('.//url')
             if urls:
-                print(f"Found {len(urls)} URLs in sitemap")
+                logger.info(f"Found {len(urls)} URLs in sitemap")
                 for url_elem in urls:
                     loc_elem = url_elem.find('loc')
                     if loc_elem is not None and loc_elem.text:
@@ -128,5 +131,5 @@ class SitemapParser:
             return all_urls
 
         except Exception as e:
-            print(f"Error parsing sitemap {sitemap_url}: {e}")
+            logger.error(f"Error parsing sitemap {sitemap_url}: {e}")
             return []

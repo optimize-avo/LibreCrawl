@@ -126,11 +126,18 @@
 
         <div id="alert" class="alert"></div>
 
-        {% if skip_auth %}
+        {% if skip_auth and not local_mode %}
         <div class="skip-auth-warning">
             <strong>⚠️ Authentication is disabled.</strong>
             Anyone can log in as any username with no password.
             The username is only used to separate sessions.
+        </div>
+        {% endif %}
+        {% if skip_auth and local_mode %}
+        <div class="skip-auth-warning">
+            <strong>🔧 Local Mode</strong>
+            Enter any username to log in. No password required.
+            Each username creates a separate profile.
         </div>
         {% endif %}
 
